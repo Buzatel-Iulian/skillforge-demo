@@ -30,3 +30,7 @@ Thumbs.db
 coverage/
 .turbo/
 *.tsbuildinfo
+
+# Deploy / certificate
+.vercel
+*.pem

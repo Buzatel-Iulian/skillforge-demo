@@ -1,0 +1,11 @@
+# Ce NU formatăm. Atenție: Prettier NU combină fișierele de ignore —
+# folosește doar cel mai apropiat de fișierul analizat. Deci acesta trebuie să fie complet,
+# iar el stă în proiect (nu într-un folder părinte), ca proiectul să funcționeze identic
+# dacă e copiat în altă parte. Un `--ignore-path ../../...` în scripturi s-ar rupe imediat.
+
+node_modules
+.next
+out
+coverage
+package-lock.json
+.DS_Store

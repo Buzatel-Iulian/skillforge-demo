@@ -1,0 +1,7 @@
+{
+  // Comis intenționat în proiect: toată grupa lucrează cu același setup de formatare,
+  // nu fiecare cu setările lui locale. Altfel diferențele dintre proiectele noastre
+  // ar fi spații și ghilimele (zgomot), nu cod.
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode"
+}

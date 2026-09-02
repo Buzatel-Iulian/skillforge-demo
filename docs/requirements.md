@@ -2,7 +2,7 @@
 
 > Acest fișier este **sursa de adevăr** pentru ce construim. Orice schimbare de direcție se scrie AICI, nu doar în conversație. Vezi [Cum se schimbă cerințele](#9-cum-se-schimbă-cerințele).
 >
-> Ultima actualizare: 2026-09-02 · Faza curentă: **Faza 0 — documente și convenții**
+> Ultima actualizare: 2026-09-02 · Faza curentă: **Faza 1 — scheletul aplicației** (livrată)
 
 ---
 
@@ -30,18 +30,18 @@ Pentru oricine vrea să crească profesional și are nevoie de un plan, indifere
 
 ## 2. De ce nu e suficient un chat generic
 
-| Problema cu un chat generic | Ce cerință rezultă |
-|---|---|
-| Dă sfaturi generice, valabile pentru oricine | System prompt construit din profilul real (§4, §5 Faza 2) |
-| Uită de la o sesiune la alta cine ești | Memorie persistentă între sesiuni (§5 Faza 3, Faza 6) |
-| Profilul nu crește — îl reintroduci de fiecare dată | Profil salvat, editabil, care se actualizează în timp |
-| E un tab de chat al altcuiva, nu unealta ta | Aplicație proprie, cu date proprii și providere schimbabile |
+| Problema cu un chat generic                         | Ce cerință rezultă                                          |
+| --------------------------------------------------- | ----------------------------------------------------------- |
+| Dă sfaturi generice, valabile pentru oricine        | System prompt construit din profilul real (§4, §5 Faza 4)   |
+| Uită de la o sesiune la alta cine ești              | Memorie persistentă între sesiuni (§5 Faza 6, Faza 9)       |
+| Profilul nu crește — îl reintroduci de fiecare dată | Profil salvat, editabil, care se actualizează în timp       |
+| E un tab de chat al altcuiva, nu unealta ta         | Aplicație proprie, cu date proprii și providere schimbabile |
 
 ---
 
 ## 3. Întrebări de referință
 
-Acestea sunt **criteriul de „funcționează bine?"**. La finalul fazelor 1–3 aplicația trebuie să răspundă bine la toate trei.
+Acestea sunt **criteriul de „funcționează bine?"**. La finalul fazelor 3–6 (agent, persona, memorie) aplicația trebuie să răspundă bine la toate trei.
 
 **1. „Ce-mi lipsește ca să trec de la Java backend la AI engineer?"**
 Răspunsul trebuie să: pornească de la skill-urile deja existente în profil (nu le repredă), numească explicit golurile față de obiectiv, și le ordoneze după impact. Un răspuns care ar fi identic pentru orice utilizator = eșec.
@@ -58,7 +58,7 @@ Răspunsul trebuie să: rețină faptul (persistent, disponibil în sesiunea urm
 
 Acestea nu se negociază de la fază la fază:
 
-1. **Agent AI în centru**, nu un formular care trimite un text la un model și afișează rezultatul. Agentul are context (profil + memorie), iar de la Faza 5 și unelte pe care le folosește singur.
+1. **Agent AI în centru**, nu un formular care trimite un text la un model și afișează rezultatul. Agentul are context (profil + memorie), iar de la Faza 7 și unelte pe care le folosește singur.
 2. **Răspuns în streaming** — textul apare progresiv, nu după 20 de secunde de spinner.
 3. **System prompt construit din profil**, generat la runtime. Nu hardcodat în cod.
 4. **Memorie între sesiuni** — ce s-a stabilit sau s-a terminat rămâne disponibil la următoarea deschidere a aplicației.
@@ -67,11 +67,23 @@ Acestea nu se negociază de la fază la fază:
 
 ### Stack fixat
 
-- **Next.js (App Router) + TypeScript** — o singură aplicație, cu UI și server în același proiect.
+- **Next.js 16 (App Router) + TypeScript + React 19** — o singură aplicație, cu UI și server în același proiect. Structură cu `src/`, alias de import `@/*`, ESLint activ. Bundler: Turbopack (implicit în Next 16).
+- **Tailwind CSS v4** — configurare „CSS-first": **nu există `tailwind.config.js`**, tema stă în `@theme`, în `src/app/globals.css`.
+- **shadcn/ui** — componentele de UI se iau din shadcn (`components.json` în proiect, helperul `cn()` în `src/lib/utils.ts`), nu se scriu de mână.
 - **Vercel AI SDK** — streaming către UI și abstracția de provider.
-- **Route Handler** (`app/api/.../route.ts`) — singurul loc de unde se apelează modelul.
-- **Provider implicit: Anthropic (Claude).** Al doilea provider: OpenAI (Faza 4), pentru comparație.
-- **Persistență:** `localStorage` în fazele 2–5; **Supabase** din Faza 6.
+- **Route Handler** (`src/app/api/*/route.ts`) — singurul loc de unde se apelează modelul și singurul loc din care se poate folosi o cheie de API.
+- **Provider implicit: Anthropic (Claude).** Al doilea provider: OpenAI, pentru comparație de răspunsuri și costuri.
+- **Persistență:** `localStorage` la început; **Supabase** mai târziu.
+
+### Convenții de proiect
+
+Nu sunt detalii cosmetice — fără ele, diferențele dintre proiectele cursanților ar fi zgomot, nu cod:
+
+- **Prettier, din start**, cu configurație fixă în `.prettierrc` și `prettier-plugin-tailwindcss` care reordonează clasele Tailwind într-o ordine canonică (diff-uri citibile, duplicate vizibile). Fiindcă Tailwind v4 nu are fișier de config, plugin-ul e legat explicit de foaia de stil prin `tailwindStylesheet`. Scripturi: `npm run format` și `npm run format:check` (al doilea nu modifică nimic — e cel pentru CI). `.prettierignore` stă în rădăcina proiectului și e complet (Prettier nu combină fișierele de ignore, folosește doar cel mai apropiat).
+- **`.vscode/settings.json` comis în proiect** (format la salvare, Prettier ca formator implicit), ca toată grupa să aibă același setup.
+- **Comentariile sunt în română și explică DE CE**, nu ce face codul.
+- **Structura fișierelor:** `src/app/` (rute, un folder per rută), `src/app/api/` (Route Handlers), `src/components/` (componente proprii), `src/components/ui/` (shadcn, nu se editează manual), `src/lib/` (helpere, iar mai târziu agentul, persona, providerele), `docs/`, `scripts/`.
+- **Documentația:** `docs/requirements.md` (acest fișier), `docs/README.md` (indexul + tabelul integrărilor), `docs/<integrare>/README.md` (pașii manuali, după `docs/_template/README.md`). Convențiile pentru agenți: `AGENTS.md`, cu `CLAUDE.md` și `.github/copilot-instructions.md` generate din el prin `scripts/sync-agent-instructions.sh`.
 
 ---
 
@@ -79,47 +91,78 @@ Acestea nu se negociază de la fază la fază:
 
 Regula de lucru a cursului: **un concept nou pe fază**. Ce nu e listat într-o fază nu se implementează în avans.
 
-### Faza 0 — Documente și convenții *(faza curentă)*
+### Faza 0 — Documente și convenții _(livrată)_
 
 **Scop:** să existe o sursă de adevăr și convenții pe care agenții le citesc singuri, fără să fie reexplicate la fiecare pas.
 
-**Intră:** acest fișier; `AGENTS.md` (convenții, în engleză) cu `CLAUDE.md` și `.github/copilot-instructions.md` generate din el prin script; `README.md` scurt; `.gitignore`; șablonul pentru documentația de integrare.
-
-**Nu intră:** niciun cod de aplicație, nicio dependință instalată.
-
-**Gata când:** `docs/requirements.md` e suficient singur ca să știi ce urmează, iar scriptul de sincronizare rulează și în mod `--check`.
+**Intrat:** acest fișier; `AGENTS.md` cu `CLAUDE.md` și `.github/copilot-instructions.md` generate prin `scripts/sync-agent-instructions.sh`; `README.md` scurt; `.gitignore`.
 
 ---
 
-### Faza 1 — Chat cu streaming, de pe server
+### Faza 1 — Scheletul aplicației _(livrată)_
 
-**Scop:** primul răspuns de LLM în interfață, cu cheia în siguranță pe server.
+**Scop:** un proiect care rulează, cu structura de rutare stabilită și cu cele două lucruri de care depinde orice apel către un LLM: un loc pe server de unde se cheamă modelul și un loc sigur unde stă cheia lui.
+
+**Intrat:**
+
+- proiect `skill-forge`: Next.js 16 + TypeScript + Tailwind v4 + ESLint, folder `src/`, alias `@/*`;
+- shadcn/ui inițializat (`components.json`), componenta `button`, helperul `cn()` în `src/lib/utils.ts`;
+- `src/app/layout.tsx` (shell comun, `<html>`/`<body>`, fonturi, metadata), `src/app/page.tsx` (ruta `/`), `src/app/globals.css` (Tailwind + tokenii shadcn);
+- a doua rută, `src/app/demo/page.tsx` → `/demo`, cu navigare prin `<Link>` (client-side), nu `<a>`;
+- `src/components/Counter.tsx` — component client (`"use client"` + `useState`) și `src/components/ServerInfo.tsx` — component server (fără directivă, `await connection()` ca să se randeze la cerere), afișate una lângă alta pe `/demo`, ca diferența să se vadă pe ecran;
+- `src/app/api/hello/route.ts` — Route Handler care întoarce JSON și citește o variabilă de mediu fără prefix `NEXT_PUBLIC_`. **E strămoșul lui `src/app/api/chat/route.ts`**: pe același tip de rută va fi chemat modelul de limbaj, iar cheia lui va veni din același mecanism;
+- `.env.example` (comis, doar nume de variabile) și `.env.local` (gitignorat, valorile reale);
+- Prettier cu `prettier-plugin-tailwindcss`, `.prettierignore`, scripturile `format` / `format:check`, `.vscode/settings.json` comis;
+- `docs/README.md` (index + tabelul integrărilor) și `docs/_template/README.md` (formatul obligatoriu al oricărui fișier de integrare) — locul și formatul există ÎNAINTE de prima cheie de API.
+
+**Nu a intrat:** niciun apel către un LLM, nicio integrare externă, niciun profil, nicio persistență.
+
+**Gata când:** `npm run build`, `npm run dev` și `npm run format` trec, `/` și `/demo` se încarcă, iar `/api/hello` întoarce JSON cu valoarea din `.env.local`.
+
+---
+
+### Faza 2 — Interfața aplicației
+
+**Scop:** UI-ul de chat, ca schelet vizual, înainte să existe agentul.
+
+**Intră:** ecranul de chat (listă de mesaje, input, stări de trimitere), componente luate din shadcn, structura de layout care va găzdui sesiunile și profilul, stări goale și de eroare.
+
+**Nu intră:** niciun apel către un model — mesajele nu primesc încă răspuns real.
+
+**Gata când:** interfața arată ca aplicația finală și e evident unde se va conecta agentul.
+
+---
+
+### Faza 3 — Agentul: apel la LLM și streaming
+
+**Scop:** primul răspuns real de model în interfață, cu cheia în siguranță pe server.
 
 **Intră:**
-- schelet Next.js (App Router, TypeScript);
-- pagină de chat: listă de mesaje, input, stare de „se scrie";
-- Route Handler `/api/chat` care apelează Anthropic prin AI SDK și returnează un stream;
-- cheia din variabila de mediu `ANTHROPIC_API_KEY`, citită doar pe server; `.env.example` cu numele variabilei;
+
+- `src/app/api/chat/route.ts` — Route Handler care apelează Anthropic prin Vercel AI SDK și întoarce un stream;
+- răspunsul apare progresiv în UI, cu posibilitatea de a-l opri;
+- cheia din `ANTHROPIC_API_KEY`, citită doar pe server;
 - tratarea a trei erori: cheie lipsă/invalidă, provider indisponibil, limită de rate;
-- `docs/anthropic/README.md` — pașii manuali (cont, generare cheie, variabilă, costuri), conform regulii de integrare.
+- `docs/anthropic/README.md` — pașii manuali (cont, generare cheie, variabilă, costuri), plus rândul din indexul din `docs/README.md`.
 
-**Nu intră:** profil, persistență (istoricul se pierde la refresh), al doilea provider, unelte, autentificare.
+**Nu intră:** profil, memorie, al doilea provider, unelte.
 
-**Gata când:** pui o întrebare, răspunsul apare progresiv, iar `ANTHROPIC_API_KEY` nu apare nicăieri în ce ajunge în browser.
+**Gata când:** pui o întrebare, răspunsul apare token cu token, iar `ANTHROPIC_API_KEY` nu apare nicăieri în ce ajunge în browser.
 
 ---
 
-### Faza 2 — Profil și persona
+### Faza 4 — Profil și persona
 
 **Scop:** răspunsuri în contextul MEU. Aici aplicația încetează să fie un chat generic.
 
 **Intră:**
+
 - model de profil: stack curent, skill-uri cu nivel (ex. 1–5), obiectiv, timp disponibil pe săptămână, preferințe de învățare;
 - ecran de editare a profilului, salvat în `localStorage`;
 - construirea system prompt-ului („persona") din profil, la fiecare cerere;
-- profilul e trimis de browser la `/api/chat` împreună cu mesajele (serverul nu are încă stare);
+- profilul e trimis de browser la `/api/chat` împreună cu mesajele (serverul nu are încă stare) și e validat pe server;
 - export și ștergere profil (cerință de date personale, §6);
-- afișarea, în UI, a faptului că profilul e folosit în răspuns (transparență).
+- în UI se vede că răspunsul a folosit profilul (transparență).
 
 **Nu intră:** istoric persistent al conversațiilor, memorie de fapte, profil pe server.
 
@@ -127,32 +170,11 @@ Regula de lucru a cursului: **un concept nou pe fază**. Ce nu e listat într-o 
 
 ---
 
-### Faza 3 — Memorie între sesiuni
-
-**Scop:** continuitate. Agentul își amintește ce s-a stabilit și ce s-a terminat.
-
-**Intră:**
-- istoric de conversații salvat în `localStorage` (listă de sesiuni, redeschidere);
-- „fapte reținute" — memorie structurată, separată de istoricul brut (ex. *„a terminat modulul de streaming"*, *„țintă: AI engineer până în iunie"*), cu adăugare/ștergere manuală din UI;
-- injectarea controlată în context: profil + fapte reținute + ultimele mesaje, nu tot istoricul (limită de tokeni și cost);
-- ecran în care se vede ce ține minte aplicația despre tine.
-
-**Nu intră:** extragerea automată a faptelor de către agent (aceea depinde de unelte — Faza 5), sincronizare între device-uri.
-
-**Gata când:** întrebarea de referință nr. 3 (§3) funcționează după închiderea și redeschiderea browserului.
-
----
-
-### Faza 4 — Al doilea provider și costul
+### Faza 5 — Al doilea provider și costul
 
 **Scop:** să demonstrăm că providerul e schimbabil și să vedem ce costă fiecare răspuns.
 
-**Intră:**
-- OpenAI ca al doilea provider, în spatele aceleiași abstracții;
-- selector de provider/model în UI, cu provider implicit din configurație pe server;
-- numărul de tokeni consumați și costul estimat per răspuns;
-- `docs/openai/README.md` cu pașii manuali și costurile;
-- posibilitatea de a pune aceeași întrebare pe două providere și a compara răspunsurile.
+**Intră:** OpenAI ca al doilea provider, în spatele aceleiași abstracții; selector de provider/model în UI, cu implicit din configurația de server; numărul de tokeni și costul estimat per răspuns; `docs/openai/README.md`; posibilitatea de a compara aceeași întrebare pe două providere.
 
 **Nu intră:** rutare automată între modele în funcție de cost, cache de răspunsuri.
 
@@ -160,16 +182,23 @@ Regula de lucru a cursului: **un concept nou pe fază**. Ce nu e listat într-o 
 
 ---
 
-### Faza 5 — Unelte (tool calling)
+### Faza 6 — Memorie între sesiuni
+
+**Scop:** continuitate. Agentul își amintește ce s-a stabilit și ce s-a terminat.
+
+**Intră:** istoric de conversații în `localStorage` (listă de sesiuni, redeschidere); „fapte reținute" — memorie structurată, separată de istoricul brut (ex. _„a terminat modulul de streaming"_), cu adăugare/ștergere din UI; injectarea controlată în context (profil + fapte + ultimele mesaje, nu tot istoricul — limită de tokeni și cost); ecran în care se vede ce ține minte aplicația despre tine.
+
+**Nu intră:** extragerea automată a faptelor de către agent (depinde de unelte — Faza 7), sincronizare între device-uri.
+
+**Gata când:** întrebarea de referință nr. 3 (§3) funcționează după închiderea și redeschiderea browserului.
+
+---
+
+### Faza 7 — Unelte (tool calling)
 
 **Scop:** agentul acționează, nu doar răspunde.
 
-**Intră:**
-- unealtă de căutare în notițele proprii (`searchNotes`);
-- unealtă de actualizare a planului de învățare (`updateLearningPlan`) — agentul marchează un pas ca terminat sau adaugă pași;
-- unealtă de scriere în memorie (`rememberFact`) — extragerea automată a faptelor din Faza 3;
-- afișarea în UI a apelurilor de unelte (ce a apelat agentul și cu ce argumente) — vizibilitate, nu cutie neagră;
-- confirmarea utilizatorului înainte de uneltele care scriu date.
+**Intră:** unealtă de actualizare a planului de învățare (`updateLearningPlan`) — agentul marchează un pas ca terminat sau adaugă pași; unealtă de scriere în memorie (`rememberFact`) — extragerea automată a faptelor din Faza 6; afișarea în UI a apelurilor de unelte (ce a apelat agentul și cu ce argumente), ca să nu fie cutie neagră; confirmarea utilizatorului înainte de uneltele care scriu date.
 
 **Nu intră:** unelte care apelează servicii externe, execuție de cod, unelte cu efecte ireversibile.
 
@@ -177,17 +206,23 @@ Regula de lucru a cursului: **un concept nou pe fază**. Ce nu e listat într-o 
 
 ---
 
-### Faza 6 — Supabase: date pe server și autentificare
+### Faza 8 — Notițe și RAG
+
+**Scop:** agentul caută în notițele mele înainte să răspundă.
+
+**Intră:** notițe proprii (adăugare, listare); indexarea lor și căutare semantică; unealta `searchNotes`, folosită de agent atunci când întrebarea trimite la ele; citarea în răspuns a notiței folosite.
+
+**Nu intră:** corpus mare (mii de documente), import automat din surse externe.
+
+**Gata când:** o întrebare despre ceva scris doar în notițe primește un răspuns care citează notița, nu una inventată.
+
+---
+
+### Faza 9 — Supabase: date pe server și autentificare
 
 **Scop:** datele mele să nu mai trăiască într-un singur browser.
 
-**Intră:**
-- Supabase: schemă pentru profil, sesiuni de chat, fapte reținute, planuri de învățare;
-- autentificare (login), cu datele legate de utilizator;
-- Row Level Security — fiecare utilizator vede doar datele lui;
-- migrare din `localStorage` în cont, la prima autentificare;
-- serverul construiește persona din baza de date, nu din ce trimite browserul (vezi riscul din §6);
-- `docs/supabase/README.md` cu pașii manuali.
+**Intră:** schemă pentru profil, sesiuni de chat, fapte reținute, planuri și notițe; autentificare; Row Level Security (fiecare utilizator vede doar datele lui); migrare din `localStorage` în cont la prima autentificare; serverul construiește persona din baza de date, nu din ce trimite browserul (vezi riscul din §6.2); `docs/supabase/README.md`.
 
 **Nu intră:** roluri și permisiuni, echipe, partajare de planuri între utilizatori.
 
@@ -195,13 +230,13 @@ Regula de lucru a cursului: **un concept nou pe fază**. Ce nu e listat într-o 
 
 ---
 
-### Faza 7 — Deploy și observabilitate
+### Faza 10 — Deploy și observabilitate
 
 **Scop:** aplicația e online și se vede ce se întâmplă în ea.
 
-**Intră:** deploy (Vercel), variabile de mediu în mediul de producție, jurnalizarea cererilor de LLM (model, tokeni, cost, latență, erori), tablou simplu de consum, `docs/vercel/README.md`.
+**Intră:** deploy (Vercel), variabile de mediu în producție, jurnalizarea cererilor de LLM (model, tokeni, cost, latență, erori), tablou simplu de consum, `docs/vercel/README.md`.
 
-**Nu intră:** scalare, mai multe medii (staging/prod) dincolo de minimul necesar, alerte complexe.
+**Nu intră:** scalare, medii multiple dincolo de minimul necesar, alerte complexe.
 
 **Gata când:** aplicația e accesibilă pe un URL public, iar pentru fiecare răspuns există o înregistrare cu model, tokeni și cost.
 
@@ -209,16 +244,14 @@ Regula de lucru a cursului: **un concept nou pe fază**. Ce nu e listat într-o 
 
 ### Non-scop (explicit amânat)
 
-Nu construim, până când nu apare aici o cerință explicită: aplicație mobilă nativă; multi-user cu roluri și organizații; plăți și abonamente; fine-tuning de modele; RAG pe corpus mare (indexare de mii de documente); colaborare în timp real; internaționalizare a interfeței.
-
----
+Nu construim, până când nu apare aici o cerință explicită: aplicație mobilă nativă; multi-user cu roluri și organizații; plăți și abonamente; fine-tuning de modele; RAG pe corpus mare (indexare de mii de documente — Faza 8 acoperă doar notițele proprii); colaborare în timp real; internaționalizare a interfeței.
 
 ## 6. Cerințe non-funcționale
 
 ### 6.1 Chei de API și secrete
 
 - Cheile stau **numai** în variabile de mediu, citite **numai** în cod care rulează pe server (Route Handlers).
-- Nume folosite: `ANTHROPIC_API_KEY` (Faza 1), `OPENAI_API_KEY` (Faza 4), variabilele Supabase (Faza 6 — cheia `service_role` nu ajunge niciodată în client).
+- Nume folosite: `ANTHROPIC_API_KEY` (Faza 3), `OPENAI_API_KEY` (Faza 5), variabilele Supabase (Faza 9 — cheia `service_role` nu ajunge niciodată în client).
 - Nicio cheie în: cod, componente client, URL-uri, log-uri, mesaje de eroare afișate utilizatorului, documentație, git.
 - `.env.local` este ignorat de git. `.env.example` conține **doar numele** variabilelor, cu valori de tip placeholder.
 - În documentația de integrare se scriu **numele variabilelor și de unde se obțin valorile**, niciodată valorile reale.
@@ -228,21 +261,21 @@ Nu construim, până când nu apare aici o cerință explicită: aplicație mobi
 
 Profilul conține date despre carieră: rol actual, angajator (opțional), skill-uri, nivel, obiective, timp disponibil. Sunt date personale, chiar dacă nu sunt sensibile legal.
 
-- **Unde stau, pe fază:** Fazele 2–5 → `localStorage`, doar în browserul utilizatorului, pe un singur device. Faza 6 → Supabase, legat de contul lui, protejat prin Row Level Security.
+- **Unde stau, pe fază:** Fazele 4–8 → `localStorage`, doar în browserul utilizatorului, pe un singur device. Faza 9 → Supabase, legat de contul lui, protejat prin Row Level Security.
 - **Cine le vede:** utilizatorul. Plus **providerul de LLM**: profilul și faptele reținute sunt trimise la fiecare cerere, ca parte din system prompt. Acest lucru trebuie spus explicit în interfață — utilizatorul trebuie să știe ce iese din aplicație.
 - **Minimizare:** trimitem în context doar ce e relevant pentru întrebare (profil + fapte reținute + ultimele mesaje), nu tot istoricul. Câmpurile opționale (ex. angajator) rămân opționale.
-- **Control:** din Faza 2 utilizatorul poate exporta profilul (JSON) și îl poate șterge complet. Ștergerea înseamnă ștergere reală, nu marcaj.
-- **Risc cunoscut, acceptat până la Faza 6:** cât timp profilul vine de la browser, serverul îl primește ca dată de intrare și îl poate include în system prompt. Este acceptabil pentru un singur utilizator, în dezvoltare; **nu** e acceptabil în producție cu mai mulți utilizatori. La Faza 6 sursa profilului devine baza de date, iar intrarea din browser nu mai e de încredere.
+- **Control:** din Faza 4 utilizatorul poate exporta profilul (JSON) și îl poate șterge complet. Ștergerea înseamnă ștergere reală, nu marcaj.
+- **Risc cunoscut, acceptat până la Faza 9:** cât timp profilul vine de la browser, serverul îl primește ca dată de intrare și îl poate include în system prompt. Este acceptabil pentru un singur utilizator, în dezvoltare; **nu** e acceptabil în producție cu mai mulți utilizatori. La Faza 9 sursa profilului devine baza de date, iar intrarea din browser nu mai e de încredere.
 
 ### 6.3 Cost
 
-- Costul se urmărește per provider și model (preț per milion de tokeni, separat intrare/ieșire). De la Faza 4, costul estimat al fiecărui răspuns e vizibil în UI.
+- Costul se urmărește per provider și model (preț per milion de tokeni, separat intrare/ieșire). De la Faza 5, costul estimat al fiecărui răspuns e vizibil în UI.
 - **Cifrele concrete de preț și limitele planurilor stau în `docs/<integrare>/README.md`**, nu aici — prețurile se schimbă, și nu vrem două locuri care se contrazic.
 - Măsuri de control: limită de tokeni în răspuns, context trimis controlat (§6.2), model mai ieftin pentru sarcini simple atunci când e evident.
 
 ### 6.4 Performanță
 
-- Primul token trebuie să apară repede (țintă: sub ~2 secunde în condiții normale); streaming-ul e mecanismul principal prin care aplicația *pare* rapidă.
+- Primul token trebuie să apară repede (țintă: sub ~2 secunde în condiții normale); streaming-ul e mecanismul principal prin care aplicația _pare_ rapidă.
 - Interfața rămâne utilizabilă în timp ce răspunsul se scrie; răspunsul poate fi oprit din UI.
 
 ### 6.5 Erori și fiabilitate
@@ -259,7 +292,7 @@ Minim asumat: navigare cu tastatura pe fluxul de chat, contrast lizibil, `aria-l
 
 Regulă fixă a proiectului: **fiecare integrare externă primește `docs/<integrare>/README.md`** cu partea care se face de mână (cont, generare cheie, variabilă de mediu, configurare în dashboard, costuri, verificare). Codul îl scrie agentul; pașii manuali se uită imediat dacă nu-i notează nimeni — la reinstalare, pe alt calculator sau la deploy.
 
-Șablon: [`docs/_template-integrare.md`](_template-integrare.md). Regula, în forma citită de agenți: [`AGENTS.md`](../AGENTS.md).
+Șablon și secțiuni obligatorii: [`docs/_template/README.md`](_template/README.md). Indexul integrărilor: [`docs/README.md`](README.md). Regula, în forma citită de agenți: [`AGENTS.md`](../AGENTS.md).
 
 ---
 
