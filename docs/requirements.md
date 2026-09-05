@@ -2,7 +2,9 @@
 
 > Acest fișier este **sursa de adevăr** pentru ce construim. Orice schimbare de direcție se scrie AICI, nu doar în conversație. Vezi [Cum se schimbă cerințele](#9-cum-se-schimbă-cerințele).
 >
-> Ultima actualizare: 2026-09-02 · Faza curentă: **Faza 1 — scheletul aplicației** (livrată)
+> Ultima actualizare: 2026-09-02 · Faza curentă: **Faza 2 — interfața aplicației** (livrată)
+>
+> Numerotarea fazelor din acest fișier e a proiectului. Materialul de curs numără separat pașii de UI („primul pas de interfață"); când cele două diferă, numerotarea de aici e cea validă.
 
 ---
 
@@ -84,6 +86,11 @@ Nu sunt detalii cosmetice — fără ele, diferențele dintre proiectele cursan�
 - **Comentariile sunt în română și explică DE CE**, nu ce face codul.
 - **Structura fișierelor:** `src/app/` (rute, un folder per rută), `src/app/api/` (Route Handlers), `src/components/` (componente proprii), `src/components/ui/` (shadcn, nu se editează manual), `src/lib/` (helpere, iar mai târziu agentul, persona, providerele), `docs/`, `scripts/`.
 - **Documentația:** `docs/requirements.md` (acest fișier), `docs/README.md` (indexul + tabelul integrărilor), `docs/<integrare>/README.md` (pașii manuali, după `docs/_template/README.md`). Convențiile pentru agenți: `AGENTS.md`, cu `CLAUDE.md` și `.github/copilot-instructions.md` generate din el prin `scripts/sync-agent-instructions.sh`.
+- **UI:** tot din **Tailwind + shadcn/ui** — zero CSS scris de mână, zero altă bibliotecă de componente. Componentele de UI se adaugă cu `npx shadcn@latest add <nume>`, nu se scriu de mână. **Toate iconițele din `lucide-react`**, singura sursă de iconițe.
+- **Un component per fișier**, cu nume de fișier în `kebab-case` și componentă în `PascalCase`.
+- **Registru, nu lanțuri de `if`:** listele care cresc (providere, secțiuni de preferințe, sugestii, opțiuni de temă) se declară ca date, iar UI-ul iterează peste ele. Așa o intrare nouă nu cere modificări în JSX.
+- **Datele inventate stau NUMAI în `src/lib/mock/`.** Nicio valoare de test scrisă direct în componente — altfel înlocuirea lor cu date reale devine o vânătoare prin toate fișierele.
+- **Starea aplicației într-un singur store** (`src/store/useAppStore.ts`, Zustand + `persist`, cheia `skillforge-app`). Ce e de moment (stare de încărcare, erori, dialoguri deschise) nu se salvează.
 
 ---
 
@@ -121,15 +128,41 @@ Regula de lucru a cursului: **un concept nou pe fază**. Ce nu e listat într-o 
 
 ---
 
-### Faza 2 — Interfața aplicației
+### Faza 2 — Interfața aplicației, pe date inventate _(livrată)_
 
-**Scop:** UI-ul de chat, ca schelet vizual, înainte să existe agentul.
+**Scop:** o versiune care merge și se poate publica ÎNAINTE de orice integrare cu un model de limbaj. Dacă am porni direct cu apeluri către LLM, timpul s-ar duce în chei de API și streaming, iar aplicația încă n-ar exista.
 
-**Intră:** ecranul de chat (listă de mesaje, input, stări de trimitere), componente luate din shadcn, structura de layout care va găzdui sesiunile și profilul, stări goale și de eroare.
+**Referință de layout:** capturi din interfața Claude (`docs/claude.example.png`) — de acolo se preiau **structura zonelor, ierarhia și spațierea**. NU se preiau numele, textele, iconițele de brand sau culorile: acelea sunt ale SkillForge.
 
-**Nu intră:** niciun apel către un model — mesajele nu primesc încă răspuns real.
+**Intrat — structura de trei zone:**
 
-**Gata când:** interfața arată ca aplicația finală și e evident unde se va conecta agentul.
+- **Sidebar** (`src/components/layout/app-sidebar.tsx`, construit cu componenta `sidebar` din shadcn):
+  - sus: **un singur buton, `+ New`**. Fără „Projects", „Artifacts", „Scheduled", „Customize" — aplicația face un lucru, iar meniul trebuie să spună asta;
+  - mijloc: secțiunea **„Chats and tasks"** — lista de conversații într-un `ScrollArea`, cea activă evidențiată, iar pe hover un `DropdownMenu` cu **Redenumește** (dialog cu `Input` + `Label`) și **Șterge** (cu confirmare pe `toast`);
+  - jos: rândul de utilizator — `Avatar` + numele din profil + `ChevronUp`, care **deschide preferințele**.
+- **Header** (`src/components/layout/app-header.tsx`): doar `SidebarTrigger` + titlul conversației. Fără bară de acțiuni și, explicit, **fără buton de temă**.
+- **Centru** (`src/components/chat/`): `chat.tsx` (decide ecran de start vs. conversație), `message-list.tsx`, `message-item.tsx`, `chat-input.tsx`, `empty-state.tsx`.
+
+**Intrat — preferințele ca fereastră separată** (`src/components/settings/settings-dialog.tsx`): un `Dialog` cu două panouri — stânga navigația (`Settings` → General, `UserRound` → Profilul tău, `Sparkles` → Providere), dreapta conținutul. Nu e panou inline și nu înlocuiește conversația.
+
+- **Profilul tău** (`settings/profile-form.tsx`): `Nume`, `Stack actual`, `Skills` (un `Textarea`, o pereche pe linie, în formatul `nume: nivel`) și `Obiectiv`, cu `Input`/`Textarea` + `Label`. Niveluri permise: `începător`, `intermediar`, `avansat`; liniile neînțelese sunt raportate într-un `Alert`, iar profilul nu se salvează până sunt corectate.
+- **General → Appearance** (`settings/appearance-form.tsx`): `ToggleGroup` cu trei opțiuni — **sistem** (`Monitor`), **light** (`Sun`), **dark** (`Moon`). Tema se schimbă **doar de aici**. Implicit: `sistem`, calculat cu `matchMedia("(prefers-color-scheme: dark)")` + listener, ca schimbarea din sistemul de operare să se vadă fără refresh (`src/components/theme/theme-provider.tsx`).
+- **Providere** (`settings/providers-form.tsx`): provider și model, generate din registru. OpenAI apare dezactivat, cu eticheta fazei în care intră. Aici nu există și nu va exista câmp pentru cheia de API — cheia stă pe server.
+
+**Intrat — composer-ul** (`chat/chat-input.tsx`): cutie cu bordură, `Textarea` care crește cu textul (până la o înălțime maximă, apoi derulează), `Enter` trimite / `Shift+Enter` rând nou. Pe rândul de jos al cutiei: stânga `Plus` (loc rezervat pentru atașamente), dreapta providerul + modelul și un singur buton care comută între `Send` și `Square` (stop).
+
+**Intrat — mesajele** (`chat/message-item.tsx`): `Avatar` + rolul, bula de user aliniată dreapta, cea de assistant la stânga, buton `Copy` **în interiorul bulei** (cu `Tooltip`) și confirmare pe `toast`.
+
+**Intrat — stările de UI, făcute acum ca să nu fie uitate când vin datele reale:** ecran gol (conversație nouă, cu salut pe numele din profil și 3–4 sugestii care doar pre-completează inputul), `Skeleton` la încărcare, indicator „scrie…" animat, `Alert` pentru erori (declanșabil cu mesajul `/eroare`, cât timp nu există erori reale).
+
+**Intrat — datele și starea:**
+
+- **datele inventate stau NUMAI în `src/lib/mock/`**: `conversations.ts` (conversații cu mesaje + răspunsul simulat) și `profile.ts` (profilul). La Faza 3 se înlocuiesc dintr-o singură atingere;
+- **starea aplicației în `src/store/useAppStore.ts`** (Zustand + `persist`, cheia `skillforge-app`): profilul, providerul și modelul, tema, conversațiile și `activeConversationId`. Așa lista de conversații supraviețuiește refresh-ului chiar și fără bază de date. Stările de moment (`status`, eroarea, dialogul deschis) sunt excluse din salvare.
+
+**Nu a intrat (interzis explicit în această fază):** `src/app/api/chat/route.ts`, chei de API, orice SDK de LLM, Supabase, autentificare. Proiectul pornește pe orice laptop, fără configurare.
+
+**Gata când:** `npm run build`, `npm run dev`, `npm run lint` și `npm run format` trec; se poate naviga prin conversații, redenumi, șterge, edita profilul și schimba tema; interfața funcționează la 390px lățime (pe mobil sidebar-ul intră în `Sheet`, deschis din `SidebarTrigger`); aplicația e publicabilă — repo pe GitHub + deploy pe Vercel, versiunea de siguranță dinaintea oricărei integrări.
 
 ---
 
@@ -232,9 +265,9 @@ Regula de lucru a cursului: **un concept nou pe fază**. Ce nu e listat într-o 
 
 ### Faza 10 — Deploy și observabilitate
 
-**Scop:** aplicația e online și se vede ce se întâmplă în ea.
+**Scop:** se vede ce se întâmplă în aplicație. Deploy-ul în sine s-a făcut deja la Faza 2 (versiunea de siguranță, înainte de orice integrare); aici se adaugă ce lipsește.
 
-**Intră:** deploy (Vercel), variabile de mediu în producție, jurnalizarea cererilor de LLM (model, tokeni, cost, latență, erori), tablou simplu de consum, `docs/vercel/README.md`.
+**Intră:** variabile de mediu configurate în producție pentru toate integrările adăugate între timp, jurnalizarea cererilor de LLM (model, tokeni, cost, latență, erori), tablou simplu de consum, `docs/vercel/README.md`.
 
 **Nu intră:** scalare, medii multiple dincolo de minimul necesar, alerte complexe.
 

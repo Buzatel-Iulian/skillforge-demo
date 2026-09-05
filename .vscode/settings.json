@@ -3,5 +3,6 @@
   // nu fiecare cu setările lui locale. Altfel diferențele dintre proiectele noastre
   // ar fi spații și ghilimele (zgomot), nu cod.
   "editor.formatOnSave": true,
-  "editor.defaultFormatter": "esbenp.prettier-vscode"
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "workbench.browser.openLocalhostLinks": false
 }

@@ -57,9 +57,20 @@ Everything under `docs/` is written in Romanian — it is for the user.
 - **Next.js 16 (App Router) + TypeScript + React 19**, one project for UI and server. Turbopack is the default bundler; there is no `--turbopack` flag to pass.
 - **Tailwind CSS v4** — CSS-first configuration. There is **no `tailwind.config.js`**: the theme lives in `@theme` inside `src/app/globals.css`. Tools that need the theme must be pointed at that stylesheet (see `.prettierrc`).
 - **shadcn/ui** for components (`components.json`, style `base-nova`, built on Base UI, `lucide` icons). **Every UI component comes from shadcn (`npx shadcn@latest add <name>`) — do not hand-write component primitives.** Polymorphism uses the `render` prop (Base UI), not `asChild` — and when the rendered element is not a native `<button>` (e.g. a `next/link`), pass `nativeButton={false}` as well, otherwise Base UI warns about lost button semantics.
+- **`lucide-react` is the only icon source.** No other icon package, no hand-drawn SVGs.
+- **Zustand + `persist`** for app state, in `src/store/useAppStore.ts`, storage key `skillforge-app`. Ephemeral state (loading status, errors, open dialogs) is excluded from persistence via `partialize`.
 - **Vercel AI SDK** for streaming and provider abstraction (from the agent phase).
 - LLM calls happen **only** inside Route Handlers. Default provider: **Anthropic**; second: OpenAI. Provider choice stays behind one abstraction — no provider SDK calls scattered across the codebase.
 - Persistence: `localStorage` first, **Supabase** later.
+
+## 5.1 UI rules
+
+- **Everything is Tailwind + shadcn/ui. No hand-written CSS, no second component library.** Need a component? `npx shadcn@latest add <name>` — do not write primitives by hand.
+- **One component per file**; file names in `kebab-case`, components in `PascalCase`.
+- **Registry, not `if` chains.** Lists that grow (providers, settings sections, suggestions, theme options) are declared as data and iterated over. Adding an entry must never require editing JSX.
+- **Mock data lives only in `src/lib/mock/`** — never inline in components, so it can be replaced in one move when real data arrives.
+- **The center of the app stays minimal:** no action bar, and no theme toggle in the header. The theme is changed only in Settings → General → Appearance.
+- Tailwind v4 needs the shadcn tokens (`--background`, `--foreground`, `--card`, `--primary`, `--muted`, `--border`, `--ring`, `--destructive`, `--sidebar*`) defined on `:root` **and** `.dark`, plus `@custom-variant dark (&:is(.dark *));` and the `@theme inline` block in `src/app/globals.css`. Without them `bg-primary` / `bg-muted` generate nothing and the theme cannot switch — the classic `create-next-app` + shadcn mistake.
 
 ## 6. Code conventions
 

@@ -1,25 +1,24 @@
 /**
  * Shell-ul comun al aplicației (root layout).
  *
- * DE CE există acest fișier și de ce e obligatoriu:
- * în App Router, layout-ul rădăcină e SINGURUL loc unde se scriu <html> și <body>.
- * Paginile nu le redeclară — ele randează doar `children`. Layout-ul nu se re-randează
- * la navigarea între rute, deci aici pun tot ce trebuie să rămână stabil: fonturi,
- * metadata, iar mai târziu shell-ul de chat al agentului (bara laterală cu sesiuni,
- * providerul de temă). Dacă aș pune astea în fiecare pagină, s-ar reconstrui la fiecare
- * navigare și starea vizuală ar sări.
+ * DE CE aici, și nu în pagină, stau providerii:
+ * layout-ul nu se re-randează la navigare. Tema, tooltip-urile și notificările trebuie să
+ * supraviețuiască schimbării rutei — dacă ar fi în pagină, s-ar reinițializa la fiecare
+ * navigare (tema ar clipi, un toast în curs ar dispărea).
+ *
+ * DE CE layout-ul rămâne Server Component, deși copiii lui sunt componente client:
+ * un Server Component poate randa componente client. Așa `<head>` și HTML-ul inițial se
+ * generează pe server (bine pentru prima afișare), iar interactivitatea coboară doar unde e
+ * cerută explicit. La Faza 4, aici se va putea citi profilul de pe server fără să schimbăm
+ * structura.
  */
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
+import { ThemeProvider } from "@/components/theme/theme-provider";
 import "./globals.css";
 
-/**
- * DE CE fonturile se încarcă prin `next/font` și nu prin <link> către Google Fonts:
- * Next descarcă fișierele la build și le servește din propriul domeniu. Rezultatul e
- * că nu mai există o cerere către un terțiu la runtime (mai rapid, fără dependență
- * externă) și textul nu mai sare când fontul se schimbă. Ne dă și o variabilă CSS,
- * pe care Tailwind o folosește ca token (`--font-sans` în globals.css).
- */
 const geistSans = Geist({
   variable: "--font-sans",
   subsets: ["latin"]
@@ -30,29 +29,64 @@ const geistMono = Geist_Mono({
   subsets: ["latin"]
 });
 
-/**
- * DE CE metadata se exportă ca obiect și nu se scrie <title> de mână:
- * layout-ul rulează pe server, deci Next poate genera <head> înainte să trimită HTML-ul.
- * Contează pentru ce vede un crawler sau un link preview — un <title> pus din JavaScript
- * de client ar ajunge prea târziu.
- */
 export const metadata: Metadata = {
   title: "SkillForge",
   description: "Copilot personal de skills și carieră"
 };
 
 /**
- * DE CE tipul e `LayoutProps<"/">` și nu un tip scris de mână:
- * Next 16 generează tipuri din arborele real de rute (`.next/types`). Așa, dacă mai târziu
- * adaug un layout cu parametri dinamici (ex. `/chat/[sessionId]`), tipul lui `params` vine
- * din numele folderului — nu îl inventez eu și nu poate ieși din sincron cu rutele.
+ * Scriptul care aplică tema ÎNAINTE de primul paint.
+ *
+ * DE CE e nevoie de el, deși avem deja `ThemeProvider`:
+ * providerul rulează în React, adică după ce browserul a desenat prima dată. Cine a ales tema
+ * întunecată ar vedea o fracțiune de secundă de alb — sâcâitor și foarte vizibil. Scriptul de
+ * aici e sincron: rulează înainte de desenare și pune clasa la timp.
+ *
+ * DE CE citește chiar `localStorage["skillforge-app"]`:
+ * e cheia sub care salvează store-ul (`persist`). Formatul e `{ state: {...}, version: n }`,
+ * de unde ne interesează doar `state.theme`. Totul e în `try/catch`: dacă utilizatorul are
+ * cookie-urile/stocarea blocate, aplicația trebuie să pornească oricum, pe tema sistemului.
  */
+const themeScript = `(function () {
+  try {
+    var raw = localStorage.getItem("skillforge-app");
+    var preference = raw ? JSON.parse(raw).state.theme : "sistem";
+    var dark = preference === "dark" ||
+      (preference === "sistem" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    document.documentElement.classList.toggle("dark", dark);
+    document.documentElement.style.colorScheme = dark ? "dark" : "light";
+  } catch (error) {}
+})();`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="ro" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-      {/* `min-h-full flex flex-col` pregătește terenul pentru UI-ul de chat de la pasul următor:
-          zona de mesaje va crește, iar inputul va rămâne lipit jos. */}
-      <body className="flex min-h-full flex-col">{children}</body>
+    // `suppressHydrationWarning`: scriptul de mai sus modifică clasa de pe <html> înainte ca
+    // React să se hidrateze. Fără el, React ar raporta o nepotrivire pe care noi am produs-o
+    // intenționat — și doar pentru acest element.
+    <html
+      lang="ro"
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
+      <body className="flex min-h-full flex-col">
+        <ThemeProvider>
+          {/*
+            TooltipProvider o dată, la rădăcină: tooltip-urile împart o singură temporizare,
+            deci trecerea rapidă a mouse-ului peste mai multe butoane nu deschide trei
+            tooltip-uri suprapuse.
+          */}
+          <TooltipProvider>{children}</TooltipProvider>
+          {/*
+            Toaster-ul stă în afara conținutului: notificările se randează într-un portal, deci
+            nu trebuie să fie într-un anumit loc din arbore. Culorile lui vin din tokenii temei,
+            deci urmează automat modul light/dark.
+          */}
+          <Toaster position="bottom-center" />
+        </ThemeProvider>
+      </body>
     </html>
   );
 }

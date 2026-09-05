@@ -4,14 +4,19 @@ Copilot personal de skills și carieră. O aplicație web în centrul căreia st
 
 Se construiește pas cu pas, ca material de curs: chat cu răspuns în streaming, system prompt generat din profil, memorie între sesiuni, unelte pe care agentul le folosește singur și RAG pe notițe proprii. Modelul de limbaj se cheamă **de pe server**, printr-un provider de LLM configurat cu o cheie care nu ajunge niciodată în browser.
 
-**Stadiul actual:** scheletul aplicației (Faza 1). Agentul AI intră la pașii următori.
+**Stadiul actual:** interfața completă, pe date inventate (Faza 2). **Niciun apel către un model de limbaj și nicio cheie de API** — proiectul pornește pe orice laptop, fără configurare. Agentul intră la pasul următor.
 
 ## Cum se rulează
 
 ```bash
 npm install
+npm run dev   # http://localhost:3000
+```
+
+Atât. Fișierul `.env.local` e opțional în faza asta — de el are nevoie doar endpoint-ul de demonstrație `/api/hello`:
+
+```bash
 cp .env.example .env.local   # completează valorile; fișierul nu se comite
-npm run dev                  # http://localhost:3000
 ```
 
 Variabilele de mediu se citesc la pornirea serverului — după ce modifici `.env.local`, repornește `npm run dev`.
@@ -27,9 +32,22 @@ Variabilele de mediu se citesc la pornirea serverului — după ce modifici `.en
 
 ### Ce e de văzut acum
 
-- `/` — pagina principală, cu navigare client-side către a doua rută;
+- `/` — aplicația: sidebar cu conversații (selectare, redenumire, ștergere), zona de chat cu mesaje inventate, composer cu `Enter` = trimite și `Shift+Enter` = rând nou;
+- **rândul de utilizator, jos în sidebar** → deschide preferințele: profilul tău (nume, stack, skills, obiectiv), tema (sistem / light / dark) și providerul de LLM;
+- scrie `/eroare` în composer ca să vezi starea de eroare a interfeței (cât timp nu există erori reale de provider);
 - `/demo` — un component client (contor cu stare în browser) lângă un component server (ora calculată la cerere), ca diferența dintre ele să se vadă pe ecran;
 - `/api/hello` — endpoint propriu care citește o variabilă de mediu. **E strămoșul lui `/api/chat`**: pe același tip de rută va fi chemat modelul de limbaj, iar cheia lui de API va veni exact din același mecanism.
+
+### Unde stau lucrurile
+
+| Cale                       | Ce e                                                                                |
+| -------------------------- | ----------------------------------------------------------------------------------- |
+| `src/components/layout/`   | sidebar-ul și header-ul                                                             |
+| `src/components/chat/`     | zona de conversație: listă, mesaj, composer, ecran de start                         |
+| `src/components/settings/` | fereastra de preferințe și formularele ei                                           |
+| `src/components/ui/`       | componente shadcn — generate, nu se editează manual                                 |
+| `src/lib/mock/`            | **toate** datele inventate: se înlocuiesc dintr-o singură atingere la pasul următor |
+| `src/store/useAppStore.ts` | starea aplicației (Zustand + `persist`, cheia `skillforge-app`)                     |
 
 ## Vite + React vs. Next.js
 
@@ -52,6 +70,7 @@ Concluzia practică: cu Vite ar fi trebuit două proiecte (SPA + backend pentru 
 | [docs/requirements.md](docs/requirements.md)         | **Sursa de adevăr:** ce construim și pentru cine, cerințele pe faze, cerințele non-funcționale (chei de API, date personale, cost), glosarul                                             |
 | [docs/README.md](docs/README.md)                     | Indexul documentației + tabelul integrărilor externe                                                                                                                                     |
 | [docs/_template/README.md](docs/_template/README.md) | Formatul obligatoriu pentru documentația unei integrări (cont, chei, variabile, pași manuali, cost, verificare)                                                                          |
+| [docs/vercel/README.md](docs/vercel/README.md)       | Pașii manuali pentru publicare: repo pe GitHub, import în Vercel, variabile de mediu în producție, costuri                                                                               |
 | [AGENTS.md](AGENTS.md)                               | Convențiile pentru agenții AI care lucrează în proiect. Fișier canonic — `CLAUDE.md` și `.github/copilot-instructions.md` se generează din el cu `sh scripts/sync-agent-instructions.sh` |
 
 Când se schimbă ceva pe drum, se actualizează în `docs/requirements.md`, nu doar în conversație. Cheile reale stau exclusiv în `.env.local` (gitignorat) — în `docs/` se scriu doar numele variabilelor.
