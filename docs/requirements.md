@@ -2,7 +2,7 @@
 
 > Acest fișier este **sursa de adevăr** pentru ce construim. Orice schimbare de direcție se scrie AICI, nu doar în conversație. Vezi [Cum se schimbă cerințele](#9-cum-se-schimbă-cerințele).
 >
-> Ultima actualizare: 2026-09-02 · Faza curentă: **Faza 2 — interfața aplicației** (livrată)
+> Ultima actualizare: 2026-09-07 · Faza curentă: **Faza 2.5 — streaming de la server, fără LLM** (livrată)
 >
 > Numerotarea fazelor din acest fișier e a proiectului. Materialul de curs numără separat pașii de UI („primul pas de interfață"); când cele două diferă, numerotarea de aici e cea validă.
 
@@ -166,6 +166,27 @@ Regula de lucru a cursului: **un concept nou pe fază**. Ce nu e listat într-o 
 
 ---
 
+### Faza 2.5 — Streaming de la server, fără LLM _(livrată)_
+
+**Scop:** să se vadă cu ochiul liber cum curge un răspuns de pe server, **înainte** ca un model de limbaj să intre în ecuație. Dacă primul contact cu streaming-ul ar fi direct la Faza 3, două lucruri necunoscute s-ar amesteca: mecanismul (cum ajunge textul bucată cu bucată în interfață) și integrarea (cont, cheie, SDK, costuri). Le separăm: aici e doar mecanismul, iar el merge pe orice laptop, imediat, fără configurare.
+
+**Intrat:**
+
+- `src/app/api/about/route.ts` — primul Route Handler care trimite date **în timp**: `runtime = "nodejs"`, un `ReadableStream<Uint8Array>` care împinge bucăți de text la ~120ms distanță, apoi se închide. Descrierea aplicației e scrisă **într-un singur loc, pe server** — se schimbă fără să se atingă interfața;
+- protocolul **SSE** (Server-Sent Events): fiecare eveniment e `data: <payload>\n\n`, iar la final un eveniment `data: [DONE]`. Payload-ul e codat cu `JSON.stringify` (și decodat cu `JSON.parse` pe client) **pentru că `\n\n` e separatorul de evenimente** — un text cu rânduri noi trimis brut ar rupe protocolul;
+- headerele obligatorii: `Content-Type: text/event-stream; charset=utf-8` și `Cache-Control: no-cache, no-transform` (fără al doilea, un proxy poate tampona tot răspunsul și îl livrează la final, dintr-o bucată — se vede abia în producție);
+- `src/components/settings/about-form.tsx` — secțiunea **Preferințe → Despre aplicație** (o intrare nouă în registrul `SECTIONS`, iconița `Info`), care citește stream-ul **de mână**, fără SDK: `res.body.getReader()` + `TextDecoder`. Cele două capcane sunt tratate explicit și comentate: `decode(value, { stream: true })` (altfel un caracter UTF-8 tăiat între două bucăți de rețea — `ă`, `ș`, `ț` — apare stricat) și `buffer.split("\n\n")` cu ultima parte, incompletă, păstrată pentru bucata următoare (o bucată de rețea nu coincide cu un eveniment);
+- cererea pornește la deschiderea tabului (`useEffect` la montare) și se anulează cu `AbortController` în cleanup — altfel, la închiderea ferestrei, am scrie stare într-o componentă demontată. `signal.aborted` **nu** e tratat ca eroare;
+- stări: `streaming` (cu cursor care clipește) → `done` sau `error`, plus un buton „Reia" care resetează textul și repornește efectul printr-un `runId`.
+
+**Nu a intrat:** niciun apel către un LLM, nicio cheie de API, niciun SDK (nici Vercel AI SDK), nicio schimbare în fluxul de chat — composer-ul și mesajele rămân pe datele inventate până la Faza 3.
+
+**Gata când:** deschizi Preferințe → Despre aplicație și textul se scrie progresiv, cu diacriticele intacte; butonul „Reia" repetă efectul; bara de jos rămâne la baza panoului indiferent cât text a curs; `curl -N http://localhost:3000/api/about` arată evenimentele sosind pe rând, nu toate deodată.
+
+**De discutat pe cod, la curs:** SSE vs. WebSocket vs. polling (un canal server→client peste HTTP, cu reconectare automată / bidirecțional și mai complex / clientul întreabă repetat, simplu dar ineficient) și Edge vs. Node runtime — streaming-ul merge pe amândouă.
+
+---
+
 ### Faza 3 — Agentul: apel la LLM și streaming
 
 **Scop:** primul răspuns real de model în interfață, cu cheia în siguranță pe server.
@@ -173,7 +194,7 @@ Regula de lucru a cursului: **un concept nou pe fază**. Ce nu e listat într-o 
 **Intră:**
 
 - `src/app/api/chat/route.ts` — Route Handler care apelează Anthropic prin Vercel AI SDK și întoarce un stream;
-- răspunsul apare progresiv în UI, cu posibilitatea de a-l opri;
+- răspunsul apare progresiv în UI, cu posibilitatea de a-l opri. **Mecanismul e cel scris deja de mână la Faza 2.5** — se schimbă sursa bucăților (modelul, nu un array pe server), nu protocolul;
 - cheia din `ANTHROPIC_API_KEY`, citită doar pe server;
 - tratarea a trei erori: cheie lipsă/invalidă, provider indisponibil, limită de rate;
 - `docs/anthropic/README.md` — pașii manuali (cont, generare cheie, variabilă, costuri), plus rândul din indexul din `docs/README.md`.
@@ -337,6 +358,7 @@ Ca să numim la fel aceleași lucruri:
 - **Provider** — furnizorul modelului de limbaj (Anthropic, OpenAI). Se configurează pe server și e schimbabil fără să rescriem aplicația.
 - **Model** — varianta concretă folosită de la un provider (ex. un model Claude), cu preț și capabilități proprii.
 - **Streaming** — răspunsul ajunge în interfață bucată cu bucată, pe măsură ce e generat, nu la final.
+- **SSE (Server-Sent Events)** — formatul în care serverul trimite bucățile: un canal într-un singur sens (server→client) peste un HTTP obișnuit, în care fiecare eveniment e `data: <payload>` urmat de un rând gol. Alternativele: WebSocket (bidirecțional, mai complex, inutil când doar ascultăm) și polling (clientul întreabă repetat — simplu, dar irosit).
 - **System prompt** — instrucțiunile trimise modelului înaintea conversației: cine e el, ce știe despre utilizator, cum să răspundă.
 - **Persona** — system prompt-ul generat din profilul real al utilizatorului. „Persona" = profil transformat în instrucțiuni pentru agent.
 - **Profil** — datele declarate de utilizator: stack, skill-uri cu nivel, obiectiv, timp disponibil. Se editează din UI.

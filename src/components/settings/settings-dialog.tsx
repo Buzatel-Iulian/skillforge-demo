@@ -18,11 +18,11 @@
  * conține. Prin store, orice buton din aplicație poate deschide direct secțiunea potrivită.
  */
 
-import { Settings, Sparkles, UserRound } from "lucide-react";
+import { Info, Settings, Sparkles, UserRound } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { AboutForm } from "@/components/settings/about-form";
 import { AppearanceForm } from "@/components/settings/appearance-form";
 import { ProfileForm } from "@/components/settings/profile-form";
 import { ProvidersForm } from "@/components/settings/providers-form";
@@ -64,6 +64,13 @@ const SECTIONS: {
     icon: Sparkles,
     description: "Ce model de limbaj folosește agentul.",
     Content: ProvidersForm
+  },
+  {
+    id: "despre",
+    label: "Despre aplicație",
+    icon: Info,
+    description: "La ce servește SkillForge — text adus de pe server, în streaming.",
+    Content: AboutForm
   }
 ];
 
@@ -112,17 +119,32 @@ export function SettingsDialog() {
           ))}
         </nav>
 
-        {/* Panoul de conținut. Se derulează independent de navigație. */}
-        <ScrollArea className="min-h-0">
-          <div className="flex flex-col gap-6 p-6">
-            <div className="flex flex-col gap-1">
-              <h2 className="text-lg font-semibold tracking-tight">{active.label}</h2>
-              <p className="text-sm text-muted-foreground">{active.description}</p>
-            </div>
-            <Separator />
-            <active.Content />
+        {/*
+          Panoul de conținut. Se derulează independent de navigație.
+
+          DE CE `h-full` și nu `min-h-full`:
+          o secțiune care vrea să-și lipească bara de acțiuni la baza ferestrei (vezi
+          `about-form.tsx`) folosește `flex-1`. `flex-1` are nevoie de o înălțime DEFINITĂ în
+          părinte ca să știe de ce să se agațe; `min-h-full` dă doar un minim, deci înălțimea
+          rămâne „cât conținutul" și panoul crește sub marginea ferestrei.
+          `min-h-0` e perechea obligatorie: un item de grid, ca și unul de flex, are implicit
+          `min-height: auto` și refuză să coboare sub înălțimea conținutului — fără el,
+          `overflow-y-auto` n-ar avea ce derula, panoul s-ar întinde pur și simplu.
+
+          DE CE un `div` și nu `ScrollArea` din shadcn (aici e diferența care costă o oră):
+          `ScrollArea` (Radix) inserează între viewport și copil un wrapper cu `display: table`,
+          care se dimensionează după conținut. Într-un astfel de wrapper, procentele de înălțime
+          se rezolvă circular, deci `h-full` pe copil nu mai înseamnă nimic și rețeta de mai sus
+          se rupe fără niciun mesaj de eroare.
+        */}
+        <div className="flex h-full min-h-0 flex-col gap-6 overflow-y-auto p-6">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-lg font-semibold tracking-tight">{active.label}</h2>
+            <p className="text-sm text-muted-foreground">{active.description}</p>
           </div>
-        </ScrollArea>
+          <Separator />
+          <active.Content />
+        </div>
       </DialogContent>
     </Dialog>
   );

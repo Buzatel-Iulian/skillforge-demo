@@ -29,7 +29,7 @@ import { mockProfile } from "@/lib/mock/profile";
 import { buildMockReply, mockConversations } from "@/lib/mock/conversations";
 
 /** Secțiunile dialogului de preferințe. Ținute aici pentru ca orice buton din aplicație să poată deschide direct secțiunea potrivită. */
-export type SettingsSection = "general" | "profil" | "providere";
+export type SettingsSection = "general" | "profil" | "providere" | "despre";
 
 type AppState = {
   // --- date persistate ---
