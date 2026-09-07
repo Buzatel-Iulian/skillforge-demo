@@ -11,9 +11,6 @@
  * tipul ar minți. Ținem ISO 8601 (`new Date().toISOString()`) și convertim doar la afișare.
  */
 
-/** Rolul autorului unui mesaj. Aceleași două valori pe care le folosesc și API-urile de LLM. */
-export type Role = "user" | "assistant";
-
 /**
  * Nivelurile permise pentru un skill.
  * DE CE o listă fixă și nu text liber: nivelul ajunge în system prompt („intermediar la React"),
@@ -39,18 +36,23 @@ export type Profile = {
   goal: string;
 };
 
-export type Message = {
-  id: string;
-  role: Role;
-  content: string;
-  createdAt: string;
-};
-
+/**
+ * O conversație din lista din stânga — id, titlu, când a apărut. **Fără mesaje.**
+ *
+ * DE CE nu mai are `messages` (schimbare la Faza 3):
+ * cât timp o conversație e deschisă, mesajele ei aparțin hook-ului `useChat` din
+ * `chat/chat.tsx`. Store-ul ține DOAR lista: id, titlu, care e selectată. Două locuri care țin
+ * aceleași mesaje se desincronizează garantat — unul primește bucata de stream, celălalt nu, și
+ * de aici încolo depanezi o stare care nu există nicăieri întreagă. Alegerea trebuie să fie
+ * explicită: proprietarul conversației active e `useChat`, proprietarul listei e store-ul.
+ *
+ * Consecința, asumată la pasul ăsta: mesajele nu supraviețuiesc unui refresh. Istoricul
+ * persistent intră la Faza 9, odată cu baza de date.
+ */
 export type Conversation = {
   id: string;
   title: string;
   createdAt: string;
-  messages: Message[];
 };
 
 /**
@@ -84,9 +86,12 @@ export type ProviderInfo = {
 };
 
 /**
- * Starea conversației în curs.
- * DE CE o declarăm acum, fără streaming real: din ea se aprind indicatorul „scrie…", butonul
- * de stop și alerta de eroare. La Faza 3 aceleași stări vor fi conduse de răspunsul real al
- * providerului, nu de un `setTimeout` — restul UI-ului nu va trebui rescris.
+ * NU mai există aici un tip `ChatStatus` scris de noi (era `"idle" | "streaming" | "error"`).
+ *
+ * DE CE l-am șters la Faza 3:
+ * starea reală a unei generări o cunoaște doar cel care ține cererea deschisă — hook-ul
+ * `useChat`. El o expune ca `"submitted" | "streaming" | "ready" | "error"`, iar UI-ul o
+ * DERIVĂ din ea. Un al doilea tip, ținut în paralel în store, ar fi trebuit sincronizat manual
+ * la fiecare bucată de stream — adică exact bug-ul pe care îl evităm. Componentele importă
+ * acum `ChatStatus` din pachetul `ai`.
  */
-export type ChatStatus = "idle" | "streaming" | "error";

@@ -24,9 +24,9 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
     description: "Providerul implicit al SkillForge. Se conectează la Faza 3, dintr-un Route Handler.",
     available: true,
     models: [
+      { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
       { id: "claude-opus-5", label: "Claude Opus 5" },
-      { id: "claude-sonnet-5", label: "Claude Sonnet 5" },
-      { id: "claude-haiku-4-5", label: "Claude Haiku 4.5" }
+      { id: "claude-sonnet-5", label: "Claude Sonnet 5" }
     ]
   },
   openai: {

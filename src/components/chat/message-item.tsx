@@ -16,15 +16,37 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { toast } from "sonner";
+import { isTextUIPart, type UIMessage } from "ai";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import type { Message } from "@/lib/types";
 
-export function MessageItem({ message, userInitials }: { message: Message; userInitials: string }) {
+/**
+ * ⚠️ Capcana de format a Fazei 3, cea care costă cel mai mult timp dacă n-o știi.
+ *
+ * Un mesaj din SDK **nu are `content` de tip string**. Are `parts` — bucăți TIPATE: text,
+ * raționament, apeluri de unelte, fișiere. Cine scrie `message.content` primește `undefined`,
+ * vede bule goale și trage concluzia că streaming-ul nu funcționează.
+ *
+ * DE CE formatul e așa: un răspuns modern nu mai e un singur bloc de text. La Faza 6, când
+ * agentul va apela unelte, în același mesaj vor apărea și bucăți de tip „am căutat în notițe" —
+ * imposibil de reprezentat într-un string. Aici luăm doar bucățile de text și le lipim.
+ *
+ * `isTextUIPart` e verificatorul SDK-ului: îngustează tipul, deci nu avem nevoie de `as`.
+ */
+function getMessageText(message: UIMessage): string {
+  return message.parts
+    .filter(isTextUIPart)
+    .map(part => part.text)
+    .join("");
+}
+
+export function MessageItem({ message, userInitials }: { message: UIMessage; userInitials: string }) {
   const isUser = message.role === "user";
   const [copied, setCopied] = useState(false);
+
+  const text = getMessageText(message);
 
   /**
    * DE CE copierea are nevoie de `try/catch`:
@@ -33,7 +55,7 @@ export function MessageItem({ message, userInitials }: { message: Message; userI
    */
   async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(message.content);
+      await navigator.clipboard.writeText(text);
       setCopied(true);
       toast.success("Mesaj copiat");
       setTimeout(() => setCopied(false), 1500);
@@ -64,7 +86,12 @@ export function MessageItem({ message, userInitials }: { message: Message; userI
             isUser ? "rounded-br-sm bg-primary text-primary-foreground" : "rounded-bl-sm bg-muted"
           )}
         >
-          {message.content}
+          {/*
+            Cursorul care clipește cât timp bula e încă goală.
+            DE CE: prima bucată de la model poate întârzia o secundă. O bulă complet goală arată
+            ca un bug; un cursor arată că răspunsul a început și se scrie.
+          */}
+          {text || <span className="inline-block h-4 w-2 animate-pulse rounded-xs bg-muted-foreground/60" />}
 
           <Tooltip>
             <TooltipTrigger

@@ -72,6 +72,21 @@ Everything under `docs/` is written in Romanian — it is for the user.
 - **The center of the app stays minimal:** no action bar, and no theme toggle in the header. The theme is changed only in Settings → General → Appearance.
 - Tailwind v4 needs the shadcn tokens (`--background`, `--foreground`, `--card`, `--primary`, `--muted`, `--border`, `--ring`, `--destructive`, `--sidebar*`) defined on `:root` **and** `.dark`, plus `@custom-variant dark (&:is(.dark *));` and the `@theme inline` block in `src/app/globals.css`. Without them `bg-primary` / `bg-muted` generate nothing and the theme cannot switch — the classic `create-next-app` + shadcn mistake.
 
+## 5.2 Who owns the messages
+
+The app now has two places that could hold chat messages. Only one of them does. This is not a preference — the two would silently drift apart, and the bug surfaces as "streaming stopped working".
+
+- **The open conversation belongs to `useChat`.** Its messages live in the hook, in `src/components/chat/chat.tsx`, and nowhere else.
+- **The store owns the _list_ only** (`src/store/useAppStore.ts`): conversation id, title, `createdAt`, and which one is selected. The `Conversation` type has **no `messages` field** — do not add one back.
+- Never mirror the hook's messages into the store, and never re-implement send/stop/error state next to it. A streaming answer produces dozens of updates per second; a second copy would have to be synchronised on every chunk and would diverge at the first stop, error, or conversation switch.
+- UI state (`"scrie…"` indicator, Stop button, error alert) is **derived** from the hook's `status` (`submitted` / `streaming` / `ready` / `error`) and its `error`. No parallel status field.
+- `activeConversationId` is a `string`, never `null`: it is also the key `useChat` stores messages under (`useChat({ id })`). A new conversation gets its id up front and only enters the list on its first message — if the id changed mid-send, the hook would reset and the message would vanish.
+- Persistent message history is Faza 9 (database). Until then, messages do not survive a refresh, and that is deliberate.
+
+**The model is called only from the server.** `useChat` points at `/api/chat`; the provider SDK, the API key, and `streamText` appear only in `src/app/api/chat/route.ts`. No provider call, no hand-written `fetch` to a provider, and no stream parsing in a client component. Read the key inside the handler (`process.env.ANTHROPIC_API_KEY`), never at module level — a `throw` at import time breaks `next build` on any machine without `.env.local`. A missing key is a `400` with a readable message, not a `500`; provider errors are translated to human text before they reach the UI, and the SDK's raw error message is never forwarded.
+
+Messages arriving from the browser are untrusted input: validate them on the server (`validateUIMessages`) before handing them to the model. They are `UIMessage`s with typed `parts` — there is no `content` string; convert with `convertToModelMessages` before `streamText`, and compose display text from the `text` parts.
+
 ## 6. Code conventions
 
 - **Code, identifiers, commit messages and these agent instructions are in English.** Everything under `docs/`, `README.md`, and all UI copy is in **Romanian** — that is what the user reads.

@@ -4,24 +4,25 @@
  * Lista de mesaje a conversației active, plus stările ei.
  *
  * DE CE lista e separată de `chat.tsx`:
- * `chat.tsx` decide CE se afișează (ecran de start sau conversație). Aici e strict CUM arată o
+ * `chat.tsx` decide CE se afișează și deține conversația (`useChat`). Aici e strict CUM arată o
  * conversație și cum se comportă la derulare. Sunt două motive diferite de schimbare, deci
  * două fișiere.
  *
- * DE CE conține și `Skeleton` și indicatorul „scrie…":
- * sunt stări ale aceleiași liste. Ținute aici, nu pot fi uitate la Faza 3 — când mesajele vor
- * veni prin streaming, componenta rămâne aceeași, doar sursa datelor se schimbă.
+ * DE CE stările („scrie…", `Skeleton`) sunt tot aici:
+ * sunt stări ale aceleiași liste. La Faza 3 nu a trebuit rescrisă nicio linie din ele — s-a
+ * schimbat doar de unde vine `status`: din răspunsul real al providerului, nu dintr-un
+ * `setTimeout`. Exact asta era ideea de a le face din timp.
  */
 
 import { useEffect, useRef } from "react";
+import type { ChatStatus, UIMessage } from "ai";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { MessageItem } from "@/components/chat/message-item";
-import type { ChatStatus, Message } from "@/lib/types";
 
 type MessageListProps = {
-  messages: Message[];
+  messages: UIMessage[];
   status: ChatStatus;
   userInitials: string;
   isLoading: boolean;
@@ -32,13 +33,25 @@ export function MessageList({ messages, status, userInitials, isLoading }: Messa
 
   /**
    * Derularea automată la ultimul mesaj.
-   * DE CE depinde și de `status`: când apare indicatorul „scrie…", lista crește în înălțime;
-   * fără dependența asta, indicatorul ar rămâne sub marginea vizibilă și ai crede că aplicația
-   * n-a făcut nimic. `block: "end"` derulează doar containerul, nu toată pagina.
+   *
+   * DE CE depinde de `messages` întreg și nu doar de `messages.length`:
+   * la Faza 2 se adăuga un mesaj gata scris, deci lungimea era suficientă. Acum răspunsul
+   * CREȘTE — sosește bucată cu bucată, iar lungimea listei rămâne aceeași minute în șir. Fără
+   * dependența asta, ecranul ar rămâne blocat la prima linie a răspunsului.
+   *
+   * `block: "end"` derulează doar containerul, nu toată pagina.
    */
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages.length, status]);
+  }, [messages, status]);
+
+  /**
+   * DE CE indicatorul „scrie…" apare doar la `submitted`:
+   * `submitted` = cererea a plecat, încă n-a venit nimic. La `streaming` textul deja curge în
+   * bula de răspuns, deci trei puncte animate sub el ar fi al doilea indicator pentru același
+   * lucru. Stările se DERIVĂ din `status`, nu se țin în paralel.
+   */
+  const isWaiting = status === "submitted";
 
   return (
     <ScrollArea className="flex-1">
@@ -46,9 +59,15 @@ export function MessageList({ messages, status, userInitials, isLoading }: Messa
         {isLoading ? <MessagesSkeleton /> : null}
 
         {!isLoading &&
+          /*
+            `key` = id-ul mesajului, NICIODATĂ indexul.
+            DE CE: la regenerarea unui răspuns, indexul rămâne același, iar React ar refolosi
+            elementul vechi — ai vedea textul precedent amestecat cu cel nou. Id-ul e stabil și
+            unic, deci React știe exact ce s-a schimbat.
+          */
           messages.map(message => <MessageItem key={message.id} message={message} userInitials={userInitials} />)}
 
-        {status === "streaming" && <TypingIndicator />}
+        {isWaiting && <TypingIndicator />}
 
         {/* Ancoră invizibilă pentru derulare. Mai fiabilă decât calculul manual al lui scrollTop. */}
         <div ref={bottomRef} />

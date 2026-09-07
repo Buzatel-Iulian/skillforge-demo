@@ -13,11 +13,13 @@ npm install
 npm run dev   # http://localhost:3000
 ```
 
-Atât. Fișierul `.env.local` e opțional în faza asta — de el are nevoie doar endpoint-ul de demonstrație `/api/hello`:
+Aplicația pornește și se compilează **și fără nicio cheie** — doar că, fără cheie, chat-ul îți spune asta în loc să răspundă. Ca să vorbească cu modelul:
 
 ```bash
-cp .env.example .env.local   # completează valorile; fișierul nu se comite
+cp .env.example .env.local   # completează ANTHROPIC_API_KEY; fișierul nu se comite
 ```
+
+De unde iei cheia, cât costă și cum verifici că merge: [`docs/anthropic/README.md`](docs/anthropic/README.md).
 
 Variabilele de mediu se citesc la pornirea serverului — după ce modifici `.env.local`, repornește `npm run dev`.
 
@@ -32,22 +34,23 @@ Variabilele de mediu se citesc la pornirea serverului — după ce modifici `.en
 
 ### Ce e de văzut acum
 
-- `/` — aplicația: sidebar cu conversații (selectare, redenumire, ștergere), zona de chat cu mesaje inventate, composer cu `Enter` = trimite și `Shift+Enter` = rând nou;
+- `/` — aplicația: pune o întrebare și **răspunsul real al modelului apare bucată cu bucată**, fără reîncărcarea paginii; cât timp scrie, butonul devine `Stop`. Sidebar cu conversații (selectare, redenumire, ștergere), composer cu `Enter` = trimite și `Shift+Enter` = rând nou;
 - **rândul de utilizator, jos în sidebar** → deschide preferințele: profilul tău (nume, stack, skills, obiectiv), tema (sistem / light / dark) și providerul de LLM;
-- scrie `/eroare` în composer ca să vezi starea de eroare a interfeței (cât timp nu există erori reale de provider);
+- `/api/chat` — Route Handler-ul care cheamă Anthropic. Singurul loc care atinge cheia de API. Ce vede browserul se poate verifica direct: `curl -N -X POST http://localhost:3000/api/chat -H 'content-type: application/json' -d '{"messages":[{"id":"1","role":"user","parts":[{"type":"text","text":"salut"}]}]}'`;
 - `/demo` — un component client (contor cu stare în browser) lângă un component server (ora calculată la cerere), ca diferența dintre ele să se vadă pe ecran;
-- `/api/hello` — endpoint propriu care citește o variabilă de mediu. **E strămoșul lui `/api/chat`**: pe același tip de rută va fi chemat modelul de limbaj, iar cheia lui de API va veni exact din același mecanism.
+- `/api/hello` — endpoint propriu care citește o variabilă de mediu. **E strămoșul lui `/api/chat`**: același tip de rută, același mecanism pentru cheie.
 
 ### Unde stau lucrurile
 
-| Cale                       | Ce e                                                                                |
-| -------------------------- | ----------------------------------------------------------------------------------- |
-| `src/components/layout/`   | sidebar-ul și header-ul                                                             |
-| `src/components/chat/`     | zona de conversație: listă, mesaj, composer, ecran de start                         |
-| `src/components/settings/` | fereastra de preferințe și formularele ei                                           |
-| `src/components/ui/`       | componente shadcn — generate, nu se editează manual                                 |
-| `src/lib/mock/`            | **toate** datele inventate: se înlocuiesc dintr-o singură atingere la pasul următor |
-| `src/store/useAppStore.ts` | starea aplicației (Zustand + `persist`, cheia `skillforge-app`)                     |
+| Cale                       | Ce e                                                                             |
+| -------------------------- | -------------------------------------------------------------------------------- |
+| `src/components/layout/`   | sidebar-ul și header-ul                                                          |
+| `src/components/chat/`     | zona de conversație: listă, mesaj, composer, ecran de start                      |
+| `src/components/settings/` | fereastra de preferințe și formularele ei                                        |
+| `src/components/ui/`       | componente shadcn — generate, nu se editează manual                              |
+| `src/app/api/chat/`        | Route Handler-ul care cheamă modelul — singurul loc cu acces la cheie            |
+| `src/lib/mock/`            | ce a mai rămas din datele inventate: titlurile conversațiilor de start           |
+| `src/store/useAppStore.ts` | starea aplicației — **lista** de conversații, profil, temă (Zustand + `persist`) |
 
 ## Vite + React vs. Next.js
 

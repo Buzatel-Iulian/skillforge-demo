@@ -10,9 +10,10 @@ Când se schimbă ceva pe drum, se actualizează acolo, nu doar în conversație
 
 Fiecare integrare externă are propriul folder, cu pașii manuali pe care trebuie să-i facă omul: cont, generare de chei, click-uri în dashboard-ul lor, costuri. Codul îl scrie agentul; pașii manuali se uită imediat dacă nu-i notează nimeni — la reinstalare, pe alt calculator sau la deploy îi cauți de la zero.
 
-| Integrare | La ce pas a intrat                      | Link                                   |
-| --------- | --------------------------------------- | -------------------------------------- |
-| Vercel    | Faza 2 — deploy, versiunea de siguranță | [`vercel/README.md`](vercel/README.md) |
+| Integrare | La ce pas a intrat                                 | Link                                         |
+| --------- | -------------------------------------------------- | -------------------------------------------- |
+| Vercel    | Faza 2 — deploy, versiunea de siguranță            | [`vercel/README.md`](vercel/README.md)       |
+| Anthropic | Faza 3 — providerul de LLM, apelat din `/api/chat` | [`anthropic/README.md`](anthropic/README.md) |
 
 Formatul obligatoriu al unui astfel de fișier: [`_template/README.md`](_template/README.md).
 

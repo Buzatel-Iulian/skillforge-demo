@@ -1,48 +1,66 @@
 "use client";
 
 /**
- * Starea aplicației: profil, conversații, provider, temă.
+ * Starea aplicației: profil, LISTA de conversații, provider, temă.
  *
  * DE CE un store global și nu `useState` în componente:
- * aceleași date sunt citite din trei locuri care nu se conțin unul pe altul — sidebar-ul
- * (lista de conversații), zona de chat (mesajele) și dialogul de preferințe (profilul, tema).
- * Cu `useState` ar trebui ridicate în layout și pasate prin toate nivelurile ca props. Numele
- * din profil e cazul limpede: apare în rândul de utilizator, în salutul de pe conversația nouă
- * și în formularul de editare.
+ * aceleași date sunt citite din locuri care nu se conțin unul pe altul — sidebar-ul (lista de
+ * conversații), header-ul (titlul celei active) și dialogul de preferințe (profilul, tema). Cu
+ * `useState` ar trebui ridicate în layout și pasate prin toate nivelurile ca props. Numele din
+ * profil e cazul limpede: apare în rândul de utilizator și în salutul de pe conversația nouă.
  *
- * DE CE `persist` cu localStorage, deși mai târziu vine Supabase:
- * cerința e ca lista de conversații și profilul să supraviețuiască unui refresh chiar și fără
- * bază de date. `persist` face exact atât, iar la Faza 9 se înlocuiește stratul de storage —
- * componentele nu se ating, pentru că ele văd doar acest store.
+ * ⚠️ CINE DEȚINE MESAJELE — decizia cea mai importantă a Fazei 3.
+ * Store-ul ține **lista** de conversații: id, titlu, care e selectată. **Mesajele conversației
+ * deschise NU mai trec pe aici** — sunt ale hook-ului `useChat` din `chat/chat.tsx`, care ține
+ * cererea deschisă și primește bucățile de stream.
  *
- * DE CE nicio funcție de aici nu face `fetch`:
- * în pasul ăsta nu există niciun apel către un model. `sendMessage` simulează un răspuns cu un
- * `setTimeout`, ca stările de UI („scrie…", stop, eroare) să existe și să fie verificabile.
- * La Faza 3 se schimbă DOAR interiorul lui `sendMessage`.
+ * DE CE nu le ținem în amândouă locurile:
+ * pentru că nu se poate. Un răspuns care curge produce zeci de actualizări pe secundă; ele
+ * ajung întâi la `useChat`. Dacă store-ul ar păstra o copie, ar trebui sincronizată la fiecare
+ * bucată, iar la prima întrerupere (stop, eroare, schimbat conversația) cele două ar diverge —
+ * și ai depana o stare care nu există întreagă în niciun loc. Alegerea trebuie făcută explicit,
+ * nu întâmplător: `useChat` deține conversația activă, store-ul deține lista.
+ *
+ * CE A DISPĂRUT de aici la Faza 3:
+ * `sendMessage` (trimitea un mesaj și programa un răspuns inventat), `stopStreaming`,
+ * `status`/`errorMessage`, `setTimeout`-ul care ținea răspunsul simulat și comanda de test
+ * `/eroare`. Toate erau schele pentru un agent care nu exista. Acum trimiterea o face
+ * `sendMessage` al lui `useChat`, oprirea o face `stop()`, iar erorile sunt reale.
  */
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
-import type { ChatStatus, Conversation, Message, Profile, ProviderId, ThemePreference } from "@/lib/types";
+import type { Conversation, Profile, ProviderId, ThemePreference } from "@/lib/types";
 import { DEFAULT_MODEL_ID, DEFAULT_PROVIDER_ID, PROVIDERS } from "@/lib/providers";
 import { mockProfile } from "@/lib/mock/profile";
-import { buildMockReply, mockConversations } from "@/lib/mock/conversations";
+import { mockConversations } from "@/lib/mock/conversations";
 
 /** Secțiunile dialogului de preferințe. Ținute aici pentru ca orice buton din aplicație să poată deschide direct secțiunea potrivită. */
 export type SettingsSection = "general" | "profil" | "providere" | "despre";
+
+/**
+ * Exact ce ajunge în `localStorage` — vezi `partialize`.
+ * DE CE un tip separat: forma salvată și forma din memorie NU sunt aceleași, iar `migrate`
+ * trebuie să lucreze pe cea salvată. Fără tipul ăsta, migrarea ar fi scrisă „pe încredere".
+ */
+type PersistedState = {
+  profile: Profile;
+  conversations: Conversation[];
+  providerId: ProviderId;
+  modelId: string;
+  theme: ThemePreference;
+};
 
 type AppState = {
   // --- date persistate ---
   profile: Profile;
   conversations: Conversation[];
-  activeConversationId: string | null;
   providerId: ProviderId;
   modelId: string;
   theme: ThemePreference;
 
   // --- stare efemeră (NU se salvează: vezi `partialize`) ---
-  status: ChatStatus;
-  errorMessage: string | null;
+  activeConversationId: string;
   settingsOpen: boolean;
   settingsSection: SettingsSection;
 
@@ -53,22 +71,13 @@ type AppState = {
   setModel: (modelId: string) => void;
   startNewConversation: () => void;
   selectConversation: (id: string) => void;
+  saveConversation: (id: string, firstMessage: string) => void;
   renameConversation: (id: string, title: string) => void;
   deleteConversation: (id: string) => void;
-  sendMessage: (text: string) => void;
-  stopStreaming: () => void;
-  dismissError: () => void;
   openSettings: (section?: SettingsSection) => void;
   setSettingsOpen: (open: boolean) => void;
   setSettingsSection: (section: SettingsSection) => void;
 };
-
-/**
- * Referința către răspunsul simulat în curs.
- * DE CE stă în afara store-ului: e un detaliu de implementare al simulării, nu stare de UI.
- * La Faza 3 devine `AbortController`-ul cererii reale — butonul de stop va anula fetch-ul.
- */
-let replyTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Storage inert, folosit doar pe server (vezi `storage` mai jos).
@@ -87,27 +96,31 @@ function buildTitle(firstMessage: string): string {
   return clean.length > 48 ? `${clean.slice(0, 48)}…` : clean || "Conversație nouă";
 }
 
-function createUserMessage(text: string): Message {
-  return {
-    id: crypto.randomUUID(),
-    role: "user",
-    content: text.trim(),
-    createdAt: new Date().toISOString()
-  };
-}
-
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
       profile: mockProfile,
       conversations: mockConversations,
-      activeConversationId: null,
       providerId: DEFAULT_PROVIDER_ID,
       modelId: DEFAULT_MODEL_ID,
       theme: "sistem",
 
-      status: "idle",
-      errorMessage: null,
+      /**
+       * DE CE `activeConversationId` e mereu un `string`, niciodată `null` (schimbare la Faza 3):
+       * el e acum și **cheia sub care `useChat` își ține mesajele** (`useChat({ id })`). O
+       * conversație nouă are deci un id de la bun început, chiar dacă nu apare încă în listă —
+       * altfel id-ul s-ar naște abia la primul mesaj, `useChat` ar vedea o cheie nouă chiar în
+       * timpul trimiterii, s-ar reseta și mesajul ar dispărea de sub degete.
+       *
+       * DE CE e efemer (nu se salvează):
+       * mesajele nu se salvează la pasul ăsta. Dacă am reține ce conversație era deschisă, la
+       * refresh ai vedea un titlu în header și o conversație goală dedesubt. Mai onest e să
+       * pornim de fiecare dată pe o conversație nouă; istoricul persistent vine la Faza 9.
+       *
+       * Valoarea nu e randată niciodată în HTML, deci un id diferit pe server față de browser
+       * nu poate produce o eroare de hidratare.
+       */
+      activeConversationId: crypto.randomUUID(),
       settingsOpen: false,
       settingsSection: "general",
 
@@ -127,13 +140,31 @@ export const useAppStore = create<AppState>()(
       setModel: modelId => set({ modelId }),
 
       /**
-       * DE CE „conversație nouă" nu creează imediat un obiect în listă:
+       * DE CE „conversație nouă" generează un id, dar NU adaugă nimic în listă:
        * altfel fiecare click pe „+ New" ar lăsa în sidebar o conversație goală, fără titlu.
-       * Conversația se naște la primul mesaj — atunci avem și din ce să-i facem titlul.
+       * Conversația intră în listă la primul mesaj (`saveConversation`) — atunci avem și din ce
+       * să-i facem titlul. Până atunci, id-ul există doar ca să aibă `useChat` unde scrie.
        */
-      startNewConversation: () => set({ activeConversationId: null, status: "idle", errorMessage: null }),
+      startNewConversation: () => set({ activeConversationId: crypto.randomUUID() }),
 
-      selectConversation: id => set({ activeConversationId: id, status: "idle", errorMessage: null }),
+      selectConversation: id => set({ activeConversationId: id }),
+
+      /**
+       * Naște conversația în listă, la primul mesaj trimis.
+       * DE CE verifică întâi dacă există: la al doilea mesaj din aceeași conversație funcția e
+       * apelată din nou; fără verificare, titlul s-ar rescrie după fiecare replică.
+       */
+      saveConversation: (id, firstMessage) =>
+        set(state =>
+          state.conversations.some(conversation => conversation.id === id)
+            ? state
+            : {
+                conversations: [
+                  { id, title: buildTitle(firstMessage), createdAt: new Date().toISOString() },
+                  ...state.conversations
+                ]
+              }
+        ),
 
       renameConversation: (id, title) =>
         set(state => ({
@@ -144,95 +175,15 @@ export const useAppStore = create<AppState>()(
 
       /**
        * DE CE ștergerea trebuie să atingă și `activeConversationId`:
-       * dacă ștergi conversația deschisă, id-ul activ ar rămâne să indice ceva inexistent și
-       * zona de chat ar randa gol, fără să știe de ce. Revenim explicit la ecranul de start.
+       * dacă ștergi conversația deschisă, id-ul activ ar rămâne să indice ceva inexistent, iar
+       * `useChat` ar continua să arate mesajele unei conversații care nu mai e în listă. Trecem
+       * explicit pe o conversație nouă — adică pe un id nou, deci și pe o listă goală de mesaje.
        */
       deleteConversation: id =>
         set(state => ({
           conversations: state.conversations.filter(conversation => conversation.id !== id),
-          activeConversationId: state.activeConversationId === id ? null : state.activeConversationId
+          activeConversationId: state.activeConversationId === id ? crypto.randomUUID() : state.activeConversationId
         })),
-
-      sendMessage: text => {
-        const trimmed = text.trim();
-        if (!trimmed) return;
-
-        const { activeConversationId, conversations, profile } = get();
-        const userMessage = createUserMessage(trimmed);
-
-        /**
-         * Comandă de test pentru starea de eroare.
-         * DE CE există: starea de eroare trebuie să poată fi văzută în UI fără să stricăm
-         * intenționat ceva. La Faza 3 o înlocuiesc erorile reale (cheie lipsă, provider căzut).
-         */
-        if (trimmed === "/eroare") {
-          set({
-            status: "error",
-            errorMessage:
-              "Providerul nu a răspuns (eroare simulată). La Faza 3, aici ajung erorile reale de la /api/chat."
-          });
-          return;
-        }
-
-        if (activeConversationId === null) {
-          // Prima replică a unei conversații noi: o creăm acum și o punem prima în listă.
-          const conversation: Conversation = {
-            id: crypto.randomUUID(),
-            title: buildTitle(trimmed),
-            createdAt: new Date().toISOString(),
-            messages: [userMessage]
-          };
-          set({
-            conversations: [conversation, ...conversations],
-            activeConversationId: conversation.id,
-            status: "streaming",
-            errorMessage: null
-          });
-        } else {
-          set({
-            conversations: conversations.map(conversation =>
-              conversation.id === activeConversationId
-                ? { ...conversation, messages: [...conversation.messages, userMessage] }
-                : conversation
-            ),
-            status: "streaming",
-            errorMessage: null
-          });
-        }
-
-        // Simularea „modelul se gândește". Întârzierea e vizibilă intenționat, ca indicatorul
-        // „scrie…" să poată fi văzut și verificat.
-        if (replyTimer) clearTimeout(replyTimer);
-        replyTimer = setTimeout(() => {
-          replyTimer = null;
-          const targetId = get().activeConversationId;
-          if (!targetId) return;
-          const reply = buildMockReply(trimmed, profile);
-          set(state => ({
-            conversations: state.conversations.map(conversation =>
-              conversation.id === targetId
-                ? { ...conversation, messages: [...conversation.messages, reply] }
-                : conversation
-            ),
-            status: "idle"
-          }));
-        }, 1400);
-      },
-
-      /**
-       * DE CE butonul de stop există deja, fără streaming real:
-       * e o cerință de produs, nu un detaliu tehnic — un răspuns lung trebuie să poată fi
-       * oprit. Aici anulează răspunsul simulat; la Faza 3 va anula cererea (`AbortController`).
-       */
-      stopStreaming: () => {
-        if (replyTimer) {
-          clearTimeout(replyTimer);
-          replyTimer = null;
-        }
-        set({ status: "idle" });
-      },
-
-      dismissError: () => set({ status: "idle", errorMessage: null }),
 
       openSettings: section => set({ settingsOpen: true, settingsSection: section ?? get().settingsSection }),
       setSettingsOpen: open => set({ settingsOpen: open }),
@@ -262,25 +213,51 @@ export const useAppStore = create<AppState>()(
 
       /**
        * DE CE nu salvăm tot:
-       * `status`, `errorMessage` și starea dialogului sunt de moment. Salvate, ar produce efecte
-       * absurde — ai deschide aplicația și ar scrie „se încarcă…" sau ți-ar apărea o eroare de
-       * acum trei zile.
+       * starea dialogului de preferințe e de moment (salvată, ai deschide aplicația și ți-ar
+       * sări în față). Iar `activeConversationId` a ieșit de aici la Faza 3 — vezi motivul de
+       * pe câmp: fără mesaje salvate, o conversație redeschisă ar apărea goală.
        */
       partialize: state => ({
         profile: state.profile,
         conversations: state.conversations,
-        activeConversationId: state.activeConversationId,
         providerId: state.providerId,
         modelId: state.modelId,
         theme: state.theme
       }),
 
       /**
-       * DE CE o versiune: prima migrare vine sigur.
-       * Când profilul primește un câmp nou, starea salvată pe calculatorul cuiva va fi veche.
-       * Cu `version` + `migrate` avem unde trata cazul, în loc să crape aplicația pe date vechi.
+       * Versiunea 2 — prima migrare reală, exact cazul anticipat la Faza 2.
+       *
+       * DE CE e nevoie de ea:
+       * versiunea 1 salva în `localStorage` conversații CU mesaje, plus `activeConversationId`.
+       * Cine a folosit aplicația înainte de Faza 3 are asta pe disc. Fără migrare, mesajele
+       * vechi ar rămâne acolo pentru totdeauna, citite de nimeni, iar id-ul activ ar redeschide
+       * o conversație goală. Aici le tăiem, o singură dată, la prima încărcare după update.
        */
-      version: 1
+      version: 2,
+      migrate: persistedState => {
+        const state = persistedState as Partial<PersistedState> & {
+          conversations?: Array<Conversation & { messages?: unknown }>;
+        };
+
+        /**
+         * Construim obiectul câmp cu câmp, în loc să facem `{ ...state, ... }`.
+         * DE CE: forma veche mai conținea `activeConversationId`, iar zustand suprascrie starea
+         * curentă cu tot ce primește de aici. Copiat orbește, id-ul vechi ar reveni la fiecare
+         * pornire și ar redeschide o conversație fără mesaje. Ce nu enumerăm, dispare.
+         */
+        return {
+          profile: state.profile,
+          conversations: (state.conversations ?? mockConversations).map(({ id, title, createdAt }) => ({
+            id,
+            title,
+            createdAt
+          })),
+          providerId: state.providerId,
+          modelId: state.modelId,
+          theme: state.theme
+        } satisfies Partial<PersistedState>;
+      }
     }
   )
 );

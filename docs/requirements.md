@@ -2,7 +2,7 @@
 
 > Acest fișier este **sursa de adevăr** pentru ce construim. Orice schimbare de direcție se scrie AICI, nu doar în conversație. Vezi [Cum se schimbă cerințele](#9-cum-se-schimbă-cerințele).
 >
-> Ultima actualizare: 2026-09-07 · Faza curentă: **Faza 2.5 — streaming de la server, fără LLM** (livrată)
+> Ultima actualizare: 2026-09-07 · Faza curentă: **Faza 3 — agentul: apel la LLM și streaming** (livrată)
 >
 > Numerotarea fazelor din acest fișier e a proiectului. Materialul de curs numără separat pașii de UI („primul pas de interfață"); când cele două diferă, numerotarea de aici e cea validă.
 
@@ -160,6 +160,8 @@ Regula de lucru a cursului: **un concept nou pe fază**. Ce nu e listat într-o 
 - **datele inventate stau NUMAI în `src/lib/mock/`**: `conversations.ts` (conversații cu mesaje + răspunsul simulat) și `profile.ts` (profilul). La Faza 3 se înlocuiesc dintr-o singură atingere;
 - **starea aplicației în `src/store/useAppStore.ts`** (Zustand + `persist`, cheia `skillforge-app`): profilul, providerul și modelul, tema, conversațiile și `activeConversationId`. Așa lista de conversații supraviețuiește refresh-ului chiar și fără bază de date. Stările de moment (`status`, eroarea, dialogul deschis) sunt excluse din salvare.
 
+> **Corectat la Faza 3:** promisiunea „se înlocuiesc dintr-o singură atingere" s-a ținut doar pe jumătate. `buildMockReply` a dispărut, dar a fost nevoie și de o schimbare de structură: mesajele au ieșit cu totul din store și din tipul `Conversation`. Vezi Faza 3 → „Cine deține mesajele".
+
 **Nu a intrat (interzis explicit în această fază):** `src/app/api/chat/route.ts`, chei de API, orice SDK de LLM, Supabase, autentificare. Proiectul pornește pe orice laptop, fără configurare.
 
 **Gata când:** `npm run build`, `npm run dev`, `npm run lint` și `npm run format` trec; se poate naviga prin conversații, redenumi, șterge, edita profilul și schimba tema; interfața funcționează la 390px lățime (pe mobil sidebar-ul intră în `Sheet`, deschis din `SidebarTrigger`); aplicația e publicabilă — repo pe GitHub + deploy pe Vercel, versiunea de siguranță dinaintea oricărei integrări.
@@ -187,21 +189,43 @@ Regula de lucru a cursului: **un concept nou pe fază**. Ce nu e listat într-o 
 
 ---
 
-### Faza 3 — Agentul: apel la LLM și streaming
+### Faza 3 — Agentul: apel la LLM și streaming _(livrată)_
 
-**Scop:** primul răspuns real de model în interfață, cu cheia în siguranță pe server.
+**Scop:** primul răspuns real de model în interfață, cu cheia în siguranță pe server. Aici aplicația începe, pentru prima dată, să cheltuie bani reali și să țină un secret real — amândouă decid unde stă codul.
 
-**Intră:**
+**Intrat — serverul:**
 
-- `src/app/api/chat/route.ts` — Route Handler care apelează Anthropic prin Vercel AI SDK și întoarce un stream;
-- răspunsul apare progresiv în UI, cu posibilitatea de a-l opri. **Mecanismul e cel scris deja de mână la Faza 2.5** — se schimbă sursa bucăților (modelul, nu un array pe server), nu protocolul;
-- cheia din `ANTHROPIC_API_KEY`, citită doar pe server;
-- tratarea a trei erori: cheie lipsă/invalidă, provider indisponibil, limită de rate;
-- `docs/anthropic/README.md` — pașii manuali (cont, generare cheie, variabilă, costuri), plus rândul din indexul din `docs/README.md`.
+- `src/app/api/chat/route.ts` — Route Handler cu `runtime = "nodejs"` și `POST(request)`. **Singurul loc din aplicație care are voie să vorbească cu providerul.** Generarea se face cu `streamText`, iar răspunsul se întoarce ca stream de evenimente UI;
+- modelul **nu e scris în rută**: vine din registrul `src/lib/providers.ts` (`DEFAULT_PROVIDER_ID` / `DEFAULT_MODEL_ID`). Un id de model duplicat în două fișiere e un id care va rămâne în urmă într-unul din ele;
+- mesajele primite de la client sunt în formatul de UI (`UIMessage`, cu `parts`) și se traduc cu `convertToModelMessages` înainte de `streamText`. Sunt **două formate diferite, intenționat**: unul descrie ce se afișează, celălalt ce se trimite modelului. Înainte de conversie, lista e validată cu `validateUIMessages` — vine din browser, deci e dată nesigură;
+- cheia se citește ca `process.env.ANTHROPIC_API_KEY`, **doar pe server** și **doar în interiorul handler-ului**. Nu la nivel de modul: un `throw` la import ar face să cadă `next build` pe orice mașină fără `.env.local`;
+- **lipsa cheii se tratează ca răspuns, nu ca avarie:** `Response.json({ error }, { status: 400 })`. 500 ar trimite pe cineva să caute un bug care nu există;
+- erorile providerului (cheie respinsă, rate limit, model inexistent, provider căzut) se traduc în text lizibil în `onError`-ul stream-ului. **Mesajul brut al SDK-ului nu ajunge niciodată în UI** — poate conține detalii de cont — și cheia nu se loghează niciodată.
 
-**Nu intră:** profil, memorie, al doilea provider, unelte.
+**Intrat — interfața:**
 
-**Gata când:** pui o întrebare, răspunsul apare token cu token, iar `ANTHROPIC_API_KEY` nu apare nicăieri în ce ajunge în browser.
+- `useChat` (`@ai-sdk/react`) în `src/components/chat/chat.tsx`, cu transportul îndreptat **explicit** spre `/api/chat`. Fără `fetch` scris de mână și fără citit stream-ul manual — pentru asta există SDK-ul. Un singur `"use client"` nou, pe componenta de chat;
+- input **controlat** (`value` + `onChange` din state, nu citit din DOM), trimitere cu `sendMessage({ text })`, `key`-ul din listă e **id-ul mesajului** (niciodată indexul: la regenerare indexul rămâne același și React refolosește elementul greșit), derulare la ultimul mesaj cu `useRef` + `scrollIntoView`, focus în cutie după trimitere;
+- stările se **derivă** din `status`-ul hook-ului (`submitted` / `streaming` / `ready` / `error`): indicatorul „scrie…", butonul care devine `Stop` și cheamă `stop()`, iar `error` se afișează în componenta de `Alert` care exista deja. Niciun state paralel;
+- ⚠️ **capcană de format:** un mesaj are `parts` — bucăți tipate — nu un `content` de tip string. Textul se compune din bucățile cu `type === "text"` (`isTextUIPart`). Cine scrie `message.content` primește `undefined` și crede că streaming-ul nu funcționează.
+
+**Intrat — cine deține mesajele** (decizia structurală a fazei, corectează Faza 2):
+
+- **cât timp o conversație e deschisă, mesajele sunt ale lui `useChat`.** Store-ul păstrează **doar lista** de conversații: id, titlu, `createdAt`, plus care e selectată. Tipul `Conversation` **nu mai are `messages`**;
+- **de ce:** două locuri care țin aceleași mesaje se desincronizează garantat — un răspuns care curge produce zeci de actualizări pe secundă, iar la prima întrerupere (stop, eroare, schimbat conversația) copiile diverg. Alegerea trebuie să fie explicită, nu întâmplătoare;
+- din store au dispărut `sendMessage`, `stopStreaming`, `status`/`errorMessage` și comanda de test `/eroare` — de acum erorile sunt reale. Din `src/lib/mock/conversations.ts` a dispărut `buildMockReply` și `setTimeout`-ul care îl ținea; au rămas doar titlurile de start;
+- `activeConversationId` a devenit `string` (niciodată `null`), pentru că e și cheia sub care `useChat` își ține mesajele. O conversație nouă are id de la început, chiar dacă intră în listă abia la primul mesaj — altfel id-ul s-ar schimba chiar în timpul trimiterii și mesajul ar dispărea;
+- `activeConversationId` **nu se mai salvează** în `localStorage`, iar starea persistată a trecut la `version: 2` cu o migrare care taie mesajele vechi. **Consecință asumată:** mesajele nu supraviețuiesc unui refresh, iar aplicația pornește de fiecare dată pe o conversație nouă. Istoricul persistent rămâne la Faza 9 — a-l reține pe jumătate (titlu fără conținut) ar fi mai rău decât a nu-l reține deloc.
+
+**Intrat — integrarea:** `docs/anthropic/README.md` (cont, drumul exact până la cheie, variabila, pașii manuali, prețul pe milion de tokeni la data verificării, verificarea), rândul din indexul din `docs/README.md`, `ANTHROPIC_API_KEY` în `.env.example`.
+
+**Nu a intrat:** profil în system prompt, memorie, al doilea provider, unelte, istoric persistent al conversațiilor.
+
+**Abatere de la plan, asumată:** planul iniţial spunea `result.toUIMessageStreamResponse()`. În versiunea curentă a SDK-ului (`ai` 7.x) metoda aceea e marcată **deprecated** și dispare la următoarea versiune majoră; forma curentă e perechea `createUIMessageStreamResponse({ stream: toUIMessageStream({ ... }) })`, iar `onError` stă pe `toUIMessageStream`. Comportamentul e identic — se schimbă doar cine scrie evenimentele.
+
+**Gata când:** pui o întrebare și răspunsul apare bucată cu bucată, fără reîncărcarea paginii; butonul devine `Stop` cât timp modelul lucrează și oprește generarea; fără cheie, interfața spune „cheia nu e configurată" în loc să dea eroare de server; `npm run build` trece **și fără** `.env.local`; `ANTHROPIC_API_KEY` nu apare nicăieri în ce ajunge în browser (`grep -r ANTHROPIC_API_KEY .next/static` → niciun rezultat).
+
+**De discutat pe cod, la curs:** de ce apelul stă pe server (cheia, costul, controlul cererilor); **Edge vs. Node** runtime — și de ce în Next 16 Edge e deprecated; de ce ruta și interfața se fac în ACELAȘI pas (un endpoint fără interfață se testează cu `curl`, o interfață fără endpoint n-are ce afișa); și poanta pasului: **sub `useChat` nu e magie, e tot SSE** — aceleași `data: {...}` scrise de mână la Faza 2.5, vizibile cu `curl -N`.
 
 ---
 
